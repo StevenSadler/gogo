@@ -1,0 +1,60 @@
+####################################
+# ROS 2 workspace build artifacts
+####################################
+build/
+install/
+log/
+
+####################################
+# Colcon / Ament internals
+####################################
+.colcon/
+**/.colcon/
+**/.ament_cmake/
+**/.ament_package/
+
+####################################
+# Generated ROS 2 interfaces
+####################################
+**/rosidl_generator_*/
+**/rosidl_typesupport_*/
+**/rosidl_typesupport_cpp/
+**/rosidl_typesupport_c/
+**/rosidl_runtime_*/
+**/rosidl_default_generators/
+**/visibility_control.h
+
+####################################
+# C / C++ compiled outputs
+####################################
+*.o
+*.a
+*.so
+*.so.*
+*.d
+*.gcda
+*.gcno
+*.gcov
+
+####################################
+# Python (mixed workspaces)
+####################################
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.venv/
+venv/
+
+####################################
+# IDE / Editor
+####################################
+.vscode/
+.idea/
+
+####################################
+# Logs
+####################################
+*.log
