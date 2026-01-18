@@ -7,6 +7,7 @@ from geometry_msgs.msg import TwistStamped
 import serial
 from serial.serialutil import SerialException
 from math import pi
+import time
 
 
 class SerialDriver(Node):
@@ -14,44 +15,51 @@ class SerialDriver(Node):
         super().__init__("serial_driver")
 
         self.COMMAND_LABEL = 'C'
-        self.STATE_LABEL = 'S'
         self.MAX_TPS = 5000
+
+        self.SEND_RATE_HZ = 20.0
+        self.CMD_TIMEOUT_SEC = 1.0
 
         self.declare_parameter("wheel_radius", 0.038)     # 1.5 inches
         self.declare_parameter("wheel_separation", 0.278) # 0.228 beam + 2 * 0.013 hub width + 0.024 wheel length = 0.278
         self.declare_parameter("encoder_cpr", 4741.34)    # Pololu 4847 has 48 CPR * 98.7779 gear ratio = 4741.34
         self.declare_parameter("arduino_port", "/dev/ttyACM0") # port when running ros on PC VM
+        self.declare_parameter("baudrate", 115200)
 
         self.wheel_radius_ = self.get_parameter("wheel_radius").get_parameter_value().double_value
         self.wheel_separation_ = self.get_parameter("wheel_separation").get_parameter_value().double_value
         self.encoder_cpr_ = self.get_parameter("encoder_cpr").get_parameter_value().double_value
         self.arduino_port_ = self.get_parameter("arduino_port").get_parameter_value().string_value
+        self.baudrate_ = self.get_parameter("baudrate").get_parameter_value().integer_value
 
-        self.ticks_per_meter_ = self.encoder_cpr_ / (2 * pi * self.wheel_radius_)        
+        self.ticks_per_meter_ = self.encoder_cpr_ / (2 * pi * self.wheel_radius_)
 
-        self.get_logger().info(f"Using wheel_radius: {self.wheel_radius_}")
-        self.get_logger().info(f"Using wheel_separation: {self.wheel_separation_}")
-        self.get_logger().info(f"Using encoder_cpr: {self.encoder_cpr_}")
-        self.get_logger().info(f"Using arduino_port: {self.arduino_port_}")
-
-        self.vel_sub_ = self.create_subscription(TwistStamped, "gogo_control/cmd_vel", self.velCallback, 10)
+        # save previous calculated state
+        self.last_left_tps_ = 0
+        self.last_right_tps_ = 0
+        self.last_cmd_time_ = self.get_clock().now()
 
         self.arduino_ = None
-        self.timer_ = self.create_timer(1.0, self.connectArduino)
+
+        self.vel_sub_ = self.create_subscription(TwistStamped, "gogo_control/cmd_vel", self.vel_callback, 10)
+        self.connect_timer_ = self.create_timer(1.0, self.connect_arduino)
+        self.send_timer_ = self.create_timer(1.0 / self.SEND_RATE_HZ, self.send_command)
     
-    def connectArduino(self):
-        if self.arduino_ is not None:
+    def connect_arduino(self):
+        if self.arduino_ and self.arduino_.is_open:
             return
         
         try:
-            self.get_logger().info(f"Trying to open {self.arduino_port_}")
-            self.arduino_ = serial.Serial(self.arduino_port_, 115200, timeout=0.1)
+            self.get_logger().info(f"Trying to open Arduino on {self.arduino_port_}")
+            self.arduino_ = serial.Serial(self.arduino_port_, self.baudrate_, timeout=0.1)
+            time.sleep(2.0)
             self.get_logger().info("Arduino connected")
         except SerialException as e:
             self.get_logger().warn(f"Arduino not available: {e}")
+            self.arduino_ = None
 
     
-    def velCallback(self, msg):
+    def vel_callback(self, msg):
         v = msg.twist.linear.x
         w = msg.twist.angular.z
 
@@ -68,24 +76,44 @@ class SerialDriver(Node):
         left_tps = max(min(left_tps, self.MAX_TPS), -self.MAX_TPS)
         right_tps = max(min(right_tps, self.MAX_TPS), -self.MAX_TPS)
 
-        # create a string message containing left and right wheel vel to send to arduino through serial
-        serial_cmd = f"{self.COMMAND_LABEL}: {left_tps} {right_tps}\n"
-        if self.arduino_ is not None:
-            try:
-                self.arduino_.write(serial_cmd.encode())
-            except:
-                self.get_logger().error("Lost connection to Arduino")
-                self.arduino_.close()
-                self.arduino_ = None
+        self.last_left_tps_ = left_tps
+        self.last_right_tps_ = right_tps
+        self.last_cmd_time_ = self.get_clock().now()
 
-        # while testing only
-        self.get_logger().info(serial_cmd)
+        self.get_logger().debug(f"Received cmd: {left_tps} {right_tps}")
+    
+    def send_command(self):
+        if not self.arduino_ or not self.arduino_.is_open:
+            return
+        
+        now = self.get_clock().now()
+        elapsed = (now - self.last_cmd_time_).nanoseconds * 1e-9
+
+        if elapsed > self.CMD_TIMEOUT_SEC:
+            left = 0
+            right = 0
+            self.get_logger().warn("watchdog expired - stopping motors")
+        else:
+            left = self.last_left_tps_
+            right = self.last_right_tps_
+        
+        serial_cmd = f"{self.COMMAND_LABEL}: {left} {right}\n"
+
+        try:
+            self.arduino_.write(serial_cmd.encode())
+        except:
+            self.get_logger().error("Lost connection to Arduino")
+            self.arduino_.close()
+            self.arduino_ = None
     
     def destroy_node(self):
-        if self.arduino_:
-            stop_cmd = f"{self.COMMAND_LABEL}: 0 0\n"
-            self.arduino_.write(stop_cmd.encode())
-            self.arduino_.close()
+        if self.arduino_ and self.arduino_.is_open:
+            try:
+                stop_cmd = f"{self.COMMAND_LABEL}: 0 0\n"
+                self.arduino_.write(stop_cmd.encode())
+                self.arduino_.close()
+            except Exception:
+                pass
         super().destroy_node()
 
 
