@@ -6,8 +6,9 @@
 #define TX_PIN 11
 
 // ---------------- RoboClaw ----------------
-#define ROBOCLAW_ADDRESS 0x80
-#define ROBOCLAW_BAUD    115200
+#define ROBOCLAW_ADDRESS   0x80
+#define ROBOCLAW_BAUD      115200
+#define PACKET_SERIAL_BAUD 38400
 
 SoftwareSerial roboclawSerial(RX_PIN, TX_PIN);
 RoboClaw roboclaw(&roboclawSerial, 10000);
@@ -21,7 +22,7 @@ void setup()
 
   // RoboClaw serial
   roboclawSerial.begin(ROBOCLAW_BAUD);
-  roboclaw.begin(ROBOCLAW_BAUD);
+  roboclaw.begin(PACKET_SERIAL_BAUD);
 
   Serial.println("USB -> RoboClaw bridge ready");
 }
