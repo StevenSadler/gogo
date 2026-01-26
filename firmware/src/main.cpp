@@ -1,53 +1,54 @@
 #include <Arduino.h>
-#include <SoftwareSerial.h>
-#include <RoboClaw.h>
+#include "BuildInfo.h"
+#include "SerialManager.h"
+#include "MotorController.h"
 
-#define RX_PIN 10
-#define TX_PIN 11
+// ----------------------
+// CONFIG
+// ----------------------
+constexpr unsigned long LOOP_PERIOD_MS = 20;  // 50 Hz loop
 
-// ---------------- RoboClaw ----------------
-#define ROBOCLAW_ADDRESS   0x80
-#define ROBOCLAW_BAUD      115200
-#define PACKET_SERIAL_BAUD 38400
+// ----------------------
+// GLOBAL OBJECTS
+// ----------------------
+SerialManager serialManager;
+MotorController motors(-500, 500, 20);
+BuildInfo buildInfo;
 
-SoftwareSerial roboclawSerial(RX_PIN, TX_PIN);
-RoboClaw roboclaw(&roboclawSerial, 10000);
+// Used to run loop at fixed frequency
+static unsigned long lastLoopMs = 0; // static preserves value between loop() calls
 
-// -----------------------------------------
-void setup()
-{
-  // USB serial (PC / RPi)
-  Serial.begin(ROBOCLAW_BAUD);
-  while (!Serial) { }
-
-  // RoboClaw serial
-  roboclawSerial.begin(ROBOCLAW_BAUD);
-  roboclaw.begin(PACKET_SERIAL_BAUD);
-
-  Serial.println("USB -> RoboClaw bridge ready");
+// ----------------------
+// SERIAL COMMAND HANDLER
+// ----------------------
+void handleCommand(const char* cmd) {
+    // Expecting motor command "left,right"
+    int left, right;
+    if (sscanf(cmd, "%d,%d", &left, &right) == 2) {
+        motors.setTarget(left, right);
+    }
 }
 
-// -----------------------------------------
-void loop()
-{
-  if (Serial.available())
-  {
-    String line = Serial.readStringUntil('\n');
+// ----------------------
+// SETUP
+// ----------------------
+void setup() {
+    serialManager.begin(38400);
+    buildInfo.report();
+}
 
-    long left_tps = 0;
-    long right_tps = 0;
+// ----------------------
+// LOOP
+// ----------------------
+void loop() {
+    unsigned long now = millis();
+    unsigned long elapsed = now - lastLoopMs;
 
-    // Expected: "C: <left> <right>"
-    if (sscanf(line.c_str(), "C: %ld %ld", &left_tps, &right_tps) == 2)
-    {
-      roboclaw.SpeedM1(ROBOCLAW_ADDRESS, left_tps);
-      roboclaw.SpeedM2(ROBOCLAW_ADDRESS, right_tps);
+    // Run at fixed period
+    if (elapsed >= LOOP_PERIOD_MS) {
+        lastLoopMs += LOOP_PERIOD_MS;  // increment by fixed period, not "now"
 
-      // Optional debug
-      Serial.print("Set ");
-      Serial.print(left_tps);
-      Serial.print(" ");
-      Serial.println(right_tps);
+        serialManager.handleSerial(handleCommand);
+        motors.update(now);
     }
-  }
 }
