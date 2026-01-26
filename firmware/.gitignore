@@ -6,6 +6,12 @@
 libdeps/
 .cache/
 
+# Generated headers
+/include/generated
+
+# Backup files
+/backup
+
 ####################################
 # Arduino CLI
 ####################################
