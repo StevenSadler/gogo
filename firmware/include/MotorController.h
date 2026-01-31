@@ -23,6 +23,11 @@ public:
 
     unsigned long lastCmdTime;
 
+    // Roboclaw mapping:
+    // M1 = left wheel
+    // M2 = right wheel
+
+
     // ----------------------
     // CONSTRUCTOR
     // ----------------------
@@ -33,6 +38,14 @@ public:
           lastCmdTime(0),
           roboclaw(&roboclawSerial, 10000)  // SoftwareSerial + 10ms timeout
     {}
+
+    // ----------------------
+    // BEGIN
+    // ----------------------
+    void begin() {
+        roboclawSerial.begin(38400);
+        delay(20);
+    }
 
     // ----------------------
     // SET TARGET SPEEDS
@@ -46,8 +59,13 @@ public:
     // RAMP MOTOR OUTPUTS (locally, no Roboclaw yet)
     // ----------------------
     void update(unsigned long now) {
+        // One-time start boost if motor is at 0 but target is nonzero
+        const int START_BOOST = 70;  // adjust if needed
+
         // Left motor
-        if (leftCurrent < leftTarget) {
+        if (leftCurrent == 0 && leftTarget != 0) {
+            leftCurrent = (leftTarget > 0) ? START_BOOST : -START_BOOST;
+        } else if (leftCurrent < leftTarget) {
             leftCurrent += MAX_ACCEL;
             if (leftCurrent > leftTarget) leftCurrent = leftTarget;
         } else if (leftCurrent > leftTarget) {
@@ -56,13 +74,20 @@ public:
         }
 
         // Right motor
-        if (rightCurrent < rightTarget) {
+        if (rightCurrent == 0 && rightTarget != 0) {
+            rightCurrent = (rightTarget > 0) ? START_BOOST : -START_BOOST;
+        } else if (rightCurrent < rightTarget) {
             rightCurrent += MAX_ACCEL;
             if (rightCurrent > rightTarget) rightCurrent = rightTarget;
         } else if (rightCurrent > rightTarget) {
             rightCurrent -= MAX_ACCEL;
             if (rightCurrent < rightTarget) rightCurrent = rightTarget;
         }
+
+        // Send ramped speeds to Roboclaw
+        uint8_t address = 0x80;
+        roboclaw.SpeedM1(address, leftCurrent);
+        roboclaw.SpeedM2(address, rightCurrent);
     }
 
     // ----------------------
