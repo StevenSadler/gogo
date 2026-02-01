@@ -11,7 +11,8 @@ public:
     // ----------------------
     const int CMD_MIN;
     const int CMD_MAX;
-    const int MAX_ACCEL;
+    static constexpr int MAX_ACCEL = 25;         // max tps change per loop
+    static constexpr int MIN_STEADY_SPEED = 400; // min tps to avoid motor stutter
 
     // ----------------------
     // STATE
@@ -31,8 +32,8 @@ public:
     // ----------------------
     // CONSTRUCTOR
     // ----------------------
-    MotorController(int minCmd, int maxCmd, int maxAccelPerLoop)
-        : CMD_MIN(minCmd), CMD_MAX(maxCmd), MAX_ACCEL(maxAccelPerLoop),
+    MotorController(int minCmd, int maxCmd)
+        : CMD_MIN(minCmd), CMD_MAX(maxCmd),
           leftTarget(0), rightTarget(0),
           leftCurrent(0), rightCurrent(0),
           lastCmdTime(0),
@@ -51,38 +52,25 @@ public:
     // SET TARGET SPEEDS
     // ----------------------
     void setTarget(int left, int right) {
+        // constrain to min/max commands
         leftTarget = constrain(left, CMD_MIN, CMD_MAX);
         rightTarget = constrain(right, CMD_MIN, CMD_MAX);
+
+        // snap to zero if inside deadband
+        if (-MIN_STEADY_SPEED < leftTarget && leftTarget < MIN_STEADY_SPEED){
+            leftTarget = 0;
+        }
+        if (-MIN_STEADY_SPEED < rightTarget && rightTarget < MIN_STEADY_SPEED){
+            rightTarget = 0;
+        }
     }
 
     // ----------------------
     // RAMP MOTOR OUTPUTS (locally, no Roboclaw yet)
     // ----------------------
     void update(unsigned long now) {
-        // One-time start boost if motor is at 0 but target is nonzero
-        const int START_BOOST = 70;  // adjust if needed
-
-        // Left motor
-        if (leftCurrent == 0 && leftTarget != 0) {
-            leftCurrent = (leftTarget > 0) ? START_BOOST : -START_BOOST;
-        } else if (leftCurrent < leftTarget) {
-            leftCurrent += MAX_ACCEL;
-            if (leftCurrent > leftTarget) leftCurrent = leftTarget;
-        } else if (leftCurrent > leftTarget) {
-            leftCurrent -= MAX_ACCEL;
-            if (leftCurrent < leftTarget) leftCurrent = leftTarget;
-        }
-
-        // Right motor
-        if (rightCurrent == 0 && rightTarget != 0) {
-            rightCurrent = (rightTarget > 0) ? START_BOOST : -START_BOOST;
-        } else if (rightCurrent < rightTarget) {
-            rightCurrent += MAX_ACCEL;
-            if (rightCurrent > rightTarget) rightCurrent = rightTarget;
-        } else if (rightCurrent > rightTarget) {
-            rightCurrent -= MAX_ACCEL;
-            if (rightCurrent < rightTarget) rightCurrent = rightTarget;
-        }
+        leftCurrent = rampMotor(leftCurrent, leftTarget);
+        rightCurrent = rampMotor(rightCurrent, rightTarget);
 
         // Send ramped speeds to Roboclaw
         uint8_t address = 0x80;
@@ -120,4 +108,38 @@ public:
 private:
     SoftwareSerial roboclawSerial{10, 11}; // S2=10, S1=11
     Basicmicro roboclaw;
+
+    int rampMotor(int current, int target) {
+        // FORWARD ACCELERATION (0 <= current, current < target)
+        // either stopped or moving forward, needing forward acceleration
+        if (0 <= current && current < target) {
+            current += MAX_ACCEL;
+            if (target < current) current = target;                 // clamp to target
+            if (current < MIN_STEADY_SPEED) current = MIN_STEADY_SPEED; // enforce min steady
+        }
+        // REVERSE ACCELERATION (current <= 0, target < current)
+        // either stopped or moving backward, needing reverse acceleration
+        else if (target < current && current <= 0) {
+            current -= MAX_ACCEL;
+            if (current < target) current = target;                 // clamp to target
+            if (-MIN_STEADY_SPEED < current) current = -MIN_STEADY_SPEED; // enforce min steady
+        }
+        // FORWARD DECELERATION (0 < current, target < current)
+        // strictly moving forward, needing forward deceleration
+        else if (0 < current && target < current)  {
+            current -= MAX_ACCEL;
+            if (current < target) current = target;                // clamp to target
+            // no deadband applied here
+        }
+        // REVERSE DECELERATION (current < 0, current < target)
+        else if (current < 0 && current < target) {
+            current += MAX_ACCEL;
+            if (target < current) current = target;               // clamp to target
+            // no deadband applied here
+        }
+        // else current == target → do nothing
+
+        return current;
+    }
+
 };

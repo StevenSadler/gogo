@@ -9,7 +9,7 @@ constexpr unsigned long LOOP_PERIOD_MS = 20;   // 50 Hz
 constexpr unsigned long HOLD_MS        = 2000; // hold each speed
 constexpr unsigned long STOP_MS        = 1000; // stop between speeds
 
-MotorController motors(-500, 500, 24); // min, max, max accel per loop
+MotorController motors(-1000, 1000); // min, max
 BuildInfo buildInfo;
 
 static unsigned long lastLoopMs   = 0;
@@ -18,7 +18,7 @@ static size_t stepIndex           = 0;
 static bool inStopSegment         = true;
 
 // Speeds to test (ticks/sec)
-const int speedSteps[] = {360, 380, 400, 500};
+const int speedSteps[] = {400, 600, 800, 1000};
 constexpr size_t NUM_STEPS = sizeof(speedSteps) / sizeof(speedSteps[0]);
 
 void setup() {
