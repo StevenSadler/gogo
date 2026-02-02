@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'int_publisher = gogo_experiment.int_publisher:main',
             'int_serial = gogo_experiment.int_serial:main',
+            'twist_serial = gogo_experiment.twist_serial:main',
         ],
     },
 )

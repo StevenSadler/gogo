@@ -1,14 +1,20 @@
 from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-import os
 
 def generate_launch_description():
-    config_file = os.path.join(
+    config_arg = DeclareLaunchArgument(
+        'config',
+        default_value='xbox_twist_params.file',
+        description='Xbox twist parameter file'
+    )
+    config_file = PathJoinSubstitution([
         get_package_share_directory('gogo_teleop'),
         'config',
-        'xbox_twist_params.yaml'
-    )
+        LaunchConfiguration('config')
+    ])
 
     joy_node = Node(
             package='joy',
@@ -27,6 +33,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        config_arg,
         joy_node,
         xbox_twist_node
     ])
