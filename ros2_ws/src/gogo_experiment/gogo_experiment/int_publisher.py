@@ -3,7 +3,6 @@
 import rclpy
 from rclpy.node import Node
 from gogo_interfaces.msg import IntStamped
-from std_msgs.msg import Header
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 
 

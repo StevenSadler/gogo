@@ -7,7 +7,7 @@ from ament_index_python.packages import get_package_share_directory
 def generate_launch_description():
     config_arg = DeclareLaunchArgument(
         'config',
-        default_value='xbox_twist_params.file',
+        default_value='xbox_twist_params.yaml',
         description='Xbox twist parameter file'
     )
     config_file = PathJoinSubstitution([
