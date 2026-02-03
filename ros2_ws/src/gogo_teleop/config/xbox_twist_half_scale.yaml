@@ -1,0 +1,7 @@
+xbox_twist:
+  ros__parameters:
+    enable_button: 4          # LB button
+    axis_linear_x: 1          # left stick vertical
+    axis_angular_z: 3         # right stick horizontal
+    scale_linear: 0.025
+    scale_angular: 0.18

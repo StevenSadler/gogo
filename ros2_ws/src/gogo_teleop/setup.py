@@ -29,6 +29,8 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'xbox_twist = gogo_teleop.xbox_twist:main'
+        ],
     },
 )
