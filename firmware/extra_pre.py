@@ -43,21 +43,26 @@ else:
     BUILD_LOG_DIR.mkdir(parents=True, exist_ok=True)
     log(f"Generated headers dir: {GENERATED_HEADER_DIR}")
 
-    # ----------------------------------------------------------------------
-    # Collect source files
-    # ----------------------------------------------------------------------
-    src_files = sorted(list(SRC_DIR.glob("**/*.cpp")) + list(SRC_DIR.glob("**/*.h")))
-    log(f"Found {len(src_files)} source files")
+    # ------------------------------------------------------------------
+    # Collect source + include files for hashing
+    # ------------------------------------------------------------------
+    src_files = [f for f in SRC_DIR.rglob("*") if f.is_file()]
+    inc_files = [f for f in INCLUDE_DIR.rglob("*")
+                 if f.is_file() and GENERATED_DIR not in f.parents]
 
-    # ----------------------------------------------------------------------
-    # Compute source hash
-    # ----------------------------------------------------------------------
-    src_hasher = hashlib.sha1()
-    for f in src_files:
-        src_hasher.update(str(f.relative_to(PROJECT_DIR)).encode())
-        src_hasher.update(f.read_bytes())
-    build_hash = src_hasher.hexdigest()
+    all_files = sorted(src_files + inc_files)
+    log(f"Found {len(all_files)} source+include files for hashing")
+
+    # ------------------------------------------------------------------
+    # Compute build hash
+    # ------------------------------------------------------------------
+    build_hasher = hashlib.sha1()
+    for f in all_files:
+        build_hasher.update(str(f.relative_to(PROJECT_DIR)).encode())
+        build_hasher.update(f.read_bytes())
+    build_hash = build_hasher.hexdigest()
     log(f"BUILD_HASH = {build_hash}")
+
 
     # ----------------------------------------------------------------------
     # Compute library hash

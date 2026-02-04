@@ -6,24 +6,6 @@
 
 class MotorController {
 public:
-    // ----------------------
-    // CONFIG
-    // ----------------------
-    const int CMD_MIN;
-    const int CMD_MAX;
-    static constexpr int MAX_ACCEL = 25;         // max tps change per loop
-    static constexpr int MIN_STEADY_SPEED = 400; // min tps to avoid motor stutter
-
-    // ----------------------
-    // STATE
-    // ----------------------
-    int leftTarget;
-    int rightTarget;
-    int leftCurrent;
-    int rightCurrent;
-
-    unsigned long lastCmdTime;
-
     // Roboclaw mapping:
     // M1 = left wheel
     // M2 = right wheel
@@ -63,6 +45,12 @@ public:
         if (-MIN_STEADY_SPEED < rightTarget && rightTarget < MIN_STEADY_SPEED){
             rightTarget = 0;
         }
+
+        Serial.print(F("[MotorController] setTarget: leftTarget="));
+        Serial.print(leftTarget);
+        Serial.print(F(" rightTarget="));
+        Serial.println(rightTarget);
+
     }
 
     // ----------------------
@@ -76,6 +64,12 @@ public:
         uint8_t address = 0x80;
         roboclaw.SpeedM1(address, leftCurrent);
         roboclaw.SpeedM2(address, rightCurrent);
+
+        Serial.print(F("[MotorController] update: leftCurrent="));
+        Serial.print(leftCurrent);
+        Serial.print(F(" rightCurrent="));
+        Serial.println(rightCurrent);
+
     }
 
     // ----------------------
@@ -106,6 +100,18 @@ public:
     }
 
 private:
+    const int CMD_MIN;
+    const int CMD_MAX;
+    int leftTarget;
+    int rightTarget;
+    int leftCurrent;
+    int rightCurrent;
+    unsigned long lastCmdTime;
+    
+    static constexpr int MAX_ACCEL = 25;         // max tps change per loop
+    static constexpr int MIN_STEADY_SPEED = 400; // min tps to avoid motor stutter
+    
+
     SoftwareSerial roboclawSerial{10, 11}; // S2=10, S1=11
     Basicmicro roboclaw;
 
