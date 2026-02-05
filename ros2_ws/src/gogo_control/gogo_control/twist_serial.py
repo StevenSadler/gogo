@@ -5,7 +5,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 from gogo_interfaces.msg import MotorCommand
-from gogo_experiment.twist_serial_connection_handler import TwistSerialConnectionHandler
+from gogo_control.twist_serial_connection_handler import TwistSerialConnectionHandler
 from threading import Thread, Lock, Timer
 from queue import Queue
 from math import pi

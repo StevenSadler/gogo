@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'serial_driver = gogo_control.serial_driver:main',
+            'twist_serial = gogo_control.twist_serial:main'
         ],
     },
 )
