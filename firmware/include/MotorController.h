@@ -46,6 +46,9 @@ public:
             rightTarget = 0;
         }
 
+        lastTargetMs = millis();
+        watchdogExpired = false;
+
         Serial.print(F("[MotorController] setTarget: leftTarget="));
         Serial.print(leftTarget);
         Serial.print(F(" rightTarget="));
@@ -57,6 +60,16 @@ public:
     // RAMP MOTOR OUTPUTS (locally, no Roboclaw yet)
     // ----------------------
     void update(unsigned long now) {
+        // Check watchdog
+        if (now - lastTargetMs > WATCHDOG_TIMEOUT_MS) {
+            if (!watchdogExpired) {
+                Serial.println(F("[MotorController] WATCHDOG EXPIRED -> forcing stop"));
+                watchdogExpired = true;
+            }
+            leftTarget = 0;
+            rightTarget = 0;
+        }
+
         leftCurrent = rampMotor(leftCurrent, leftTarget);
         rightCurrent = rampMotor(rightCurrent, rightTarget);
 
@@ -65,10 +78,10 @@ public:
         roboclaw.SpeedM1(address, leftCurrent);
         roboclaw.SpeedM2(address, rightCurrent);
 
-        Serial.print(F("[MotorController] update: leftCurrent="));
-        Serial.print(leftCurrent);
-        Serial.print(F(" rightCurrent="));
-        Serial.println(rightCurrent);
+        // Serial.print(F("[MotorController] update: leftCurrent="));
+        // Serial.print(leftCurrent);
+        // Serial.print(F(" rightCurrent="));
+        // Serial.println(rightCurrent);
 
     }
 
@@ -114,6 +127,11 @@ private:
 
     SoftwareSerial roboclawSerial{10, 11}; // S2=10, S1=11
     Basicmicro roboclaw;
+
+    // Watchdog
+    static constexpr unsigned long WATCHDOG_TIMEOUT_MS = 200;
+    unsigned long lastTargetMs = 0;
+    bool watchdogExpired = false;
 
     int rampMotor(int current, int target) {
         // FORWARD ACCELERATION (0 <= current, current < target)

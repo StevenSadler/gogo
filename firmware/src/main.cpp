@@ -12,7 +12,7 @@ enum class ControlMode {
     SERIAL_MODE
 };
 
-ControlMode mode = ControlMode::TEST_MODE;  // start in TEST for now
+ControlMode mode;
 
 // ----------------------
 // CONFIG
@@ -70,7 +70,7 @@ void loop() {
 
         switch (mode) {
             case ControlMode::IDLE_MODE:
-                // Intentionally empty for now
+                motors.setTarget(0, 0);
                 break;
 
             case ControlMode::TEST_MODE:

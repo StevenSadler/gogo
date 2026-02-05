@@ -56,6 +56,8 @@ public:
                     Serial.println(F("Test complete, motors stopped."));
                     running = false;
                 }
+            } else {
+                motors.setTarget(0, 0);
             }
         }
         // ----------------------
@@ -70,6 +72,9 @@ public:
                 inStopSegment = true;
                 segmentStart  = now;
                 stepIndex++;
+            } else {
+                motors.setTarget(SPEED_STEPS[stepIndex],
+                                 SPEED_STEPS[stepIndex]);
             }
         }
     }
