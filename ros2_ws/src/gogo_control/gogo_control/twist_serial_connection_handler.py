@@ -50,12 +50,18 @@ class TwistSerialConnectionHandler:
             self.serial = None
             self._log_warn(f"Serial connection failed: {e}")
 
-    def write(self, data: str):
+    def write(self, data: bytes):
         if not self.connected or not self.serial:
             return
+        
+        if not isinstance(data, bytes):
+            raise TypeError(f"Expected bytes, got {type(data).__name__}")
+        
+        # Add this small sleep to let OS stabilize port after reconnect
+        time.sleep(0.01)
 
         try:
-            self.serial.write(data.encode("utf-8"))
+            self.serial.write(data)
         except (serial.SerialException, serial.SerialTimeoutException) as e:
             self.connected = False
             try:

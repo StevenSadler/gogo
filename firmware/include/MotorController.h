@@ -18,7 +18,7 @@ public:
         : CMD_MIN(minCmd), CMD_MAX(maxCmd),
           leftTarget(0), rightTarget(0),
           leftCurrent(0), rightCurrent(0),
-          lastCmdTime(0),
+          lastLeftTarget(0), lastRightTarget(0),
           roboclaw(&roboclawSerial, 10000)  // SoftwareSerial + 10ms timeout
     {}
 
@@ -46,47 +46,89 @@ public:
             rightTarget = 0;
         }
 
-        lastTargetMs = millis();
-        watchdogExpired = false;
-
-        Serial.print(F("[MotorController] setTarget: leftTarget="));
-        Serial.print(leftTarget);
-        Serial.print(F(" rightTarget="));
-        Serial.println(rightTarget);
-
+        if (lastLeftTarget != leftTarget || lastRightTarget != rightTarget) {
+            Serial.print(F("[MotorController] setTarget: leftTarget="));
+            Serial.print(leftTarget);
+            Serial.print(F(" rightTarget="));
+            Serial.println(rightTarget);
+        }
     }
 
     // ----------------------
     // RAMP MOTOR OUTPUTS (locally, no Roboclaw yet)
     // ----------------------
     void update(unsigned long now) {
-        // Check watchdog
-        if (now - lastTargetMs > WATCHDOG_TIMEOUT_MS) {
-            if (!watchdogExpired) {
-                Serial.println(F("[MotorController] WATCHDOG EXPIRED -> forcing stop"));
-                watchdogExpired = true;
-            }
-            leftTarget = 0;
-            rightTarget = 0;
+        int deltaLeft = leftTarget - leftCurrent;
+        int deltaRight = rightTarget - rightCurrent;
+
+        // Scale proportionally if either delta exceeds MAX_ACCEL
+        int maxDelta = max(abs(deltaLeft), abs(deltaRight));
+        float scale = 1.0f;
+        if (maxDelta > MAX_ACCEL) {
+            scale = float(MAX_ACCEL) / float(maxDelta);
         }
 
-        leftCurrent = rampMotor(leftCurrent, leftTarget);
-        rightCurrent = rampMotor(rightCurrent, rightTarget);
+        leftCurrent += int(deltaLeft * scale);
+        rightCurrent += int(deltaRight * scale);
+
+        // ----------------------
+        // Final failsafe: enforce motor limits
+        // Upstream code (XboxTwist/TwistSerial) should respect targets, but MotorController
+        // guarantees the robot never exceeds safe min/max speeds. This is the authoritative clamp.
+        // ----------------------
+        int leftClamped = constrain(leftCurrent, CMD_MIN, CMD_MAX);
+        int rightClamped = constrain(rightCurrent, CMD_MIN, CMD_MAX);
+
+        // Log if clamping actually occurred
+        if (leftClamped != leftCurrent || rightClamped != rightCurrent) {
+            Serial.print(F("[MotorController] WARNING: Final clamp applied -> "));
+            Serial.print(F("deltaL:"));
+            Serial.print(deltaLeft);
+            Serial.print(F("deltaR:"));
+            Serial.print(deltaRight);
+            Serial.print(F(" L:"));
+            Serial.print(leftCurrent);
+            Serial.print(F("->"));
+            Serial.print(leftClamped);
+            Serial.print(F(" R:"));
+            Serial.print(rightCurrent);
+            Serial.print(F("->"));
+            Serial.println(rightClamped);
+        }
+
+        leftCurrent = leftClamped;
+        rightCurrent = rightClamped;
 
         // Send ramped speeds to Roboclaw
         uint8_t address = 0x80;
         roboclaw.SpeedM1(address, leftCurrent);
         roboclaw.SpeedM2(address, rightCurrent);
 
-        // Serial.print(F("[MotorController] update: leftCurrent="));
-        // Serial.print(leftCurrent);
-        // Serial.print(F(" rightCurrent="));
-        // Serial.println(rightCurrent);
+        // Debug print if targets changed
+        if (lastLeftTarget != leftTarget || lastRightTarget != rightTarget) {
+            Serial.print(F("[MotorController] Target changed -> L:"));
+            Serial.print(leftTarget);
+            Serial.print(F(" R:"));
+            Serial.println(rightTarget);
+
+            lastLeftTarget = leftTarget;
+            lastRightTarget = rightTarget;
+        }
+
+        // Heartbeat every second
+        static unsigned long lastHeartbeatMs = 0;
+        if (now - lastHeartbeatMs >= 1000) {
+            Serial.print(F("[MotorController] Heartbeat -> L:"));
+            Serial.print(leftCurrent);
+            Serial.print(F(" R:"));
+            Serial.println(rightCurrent);
+            lastHeartbeatMs = now;
+        }
 
     }
 
     // ----------------------
-    // SAFE ROBOT CLAW PROBE
+    // SAFE ROBOCLAW PROBE
     // ----------------------
     bool probe() {
         uint8_t address = 0x80; // default Roboclaw address
@@ -115,55 +157,19 @@ public:
 private:
     const int CMD_MIN;
     const int CMD_MAX;
+
     int leftTarget;
     int rightTarget;
     int leftCurrent;
     int rightCurrent;
-    unsigned long lastCmdTime;
+    int lastLeftTarget;
+    int lastRightTarget;
     
-    static constexpr int MAX_ACCEL = 25;         // max tps change per loop
-    static constexpr int MIN_STEADY_SPEED = 400; // min tps to avoid motor stutter
-    
+    static constexpr int MAX_ACCEL = 150;        // max tps change per loop
+    static constexpr int MIN_STEADY_SPEED = 0;   // 400; // min tps to avoid motor stutter
+
 
     SoftwareSerial roboclawSerial{10, 11}; // S2=10, S1=11
     Basicmicro roboclaw;
-
-    // Watchdog
-    static constexpr unsigned long WATCHDOG_TIMEOUT_MS = 200;
-    unsigned long lastTargetMs = 0;
-    bool watchdogExpired = false;
-
-    int rampMotor(int current, int target) {
-        // FORWARD ACCELERATION (0 <= current, current < target)
-        // either stopped or moving forward, needing forward acceleration
-        if (0 <= current && current < target) {
-            current += MAX_ACCEL;
-            if (target < current) current = target;                 // clamp to target
-            if (current < MIN_STEADY_SPEED) current = MIN_STEADY_SPEED; // enforce min steady
-        }
-        // REVERSE ACCELERATION (current <= 0, target < current)
-        // either stopped or moving backward, needing reverse acceleration
-        else if (target < current && current <= 0) {
-            current -= MAX_ACCEL;
-            if (current < target) current = target;                 // clamp to target
-            if (-MIN_STEADY_SPEED < current) current = -MIN_STEADY_SPEED; // enforce min steady
-        }
-        // FORWARD DECELERATION (0 < current, target < current)
-        // strictly moving forward, needing forward deceleration
-        else if (0 < current && target < current)  {
-            current -= MAX_ACCEL;
-            if (current < target) current = target;                // clamp to target
-            // no deadband applied here
-        }
-        // REVERSE DECELERATION (current < 0, current < target)
-        else if (current < 0 && current < target) {
-            current += MAX_ACCEL;
-            if (target < current) current = target;               // clamp to target
-            // no deadband applied here
-        }
-        // else current == target → do nothing
-
-        return current;
-    }
 
 };

@@ -1,63 +1,83 @@
 #pragma once
 #include <Arduino.h>
-#include <ctype.h> // for isspace()
 
 class SerialManager {
 public:
     SerialManager() : bufIndex(0) {}
 
-    void begin(unsigned long baud) {
-        Serial.begin(baud);
-        delay(100); // give time for USB connection
-    }
-
-    // Handle serial input; calls provided callback with trimmed command
+    // Handle serial input; calls provided callback with payload string
     void handleSerial(void (*callback)(const char* cmd)) {
         while (Serial.available() > 0) {
-            char c = Serial.read();
+            uint8_t byteIn = Serial.read();
 
-            // Line ending: parse buffer
-            if (c == '\n' || c == '\r') {
-                if (bufIndex > 0) {
-                    serialBuf[bufIndex] = '\0';
-                    char* cmd = trimWhitespace(serialBuf);
-                    callback(cmd);
-                    bufIndex = 0;
-                }
-                continue;
-            }
+            switch (state) {
+                case WAIT_STX:
+                    if (byteIn == STX) {
+                        bufIndex = 0;
+                        state = READ_LEN;
+                    }
+                    break;
 
-            // Append character if space permits
-            if (bufIndex < SERIAL_BUF_SIZE - 1) {
-                serialBuf[bufIndex++] = c;
-            } else {
-                bufIndex = 0; // overflow
+                case READ_LEN:
+                    payloadLen = byteIn;
+                    if (payloadLen > SERIAL_BUF_SIZE - 1) {
+                        state = WAIT_STX; // too long, discard
+                    } else {
+                        state = READ_PAYLOAD;
+                    }
+                    break;
+
+                case READ_PAYLOAD:
+                    serialBuf[bufIndex++] = byteIn;
+                    if (bufIndex >= payloadLen) {
+                        state = READ_CHKSUM;
+                    }
+                    break;
+
+                case READ_CHKSUM:
+                    checksum = byteIn;
+                    if (computeChecksum(serialBuf, payloadLen) != checksum) {
+                        state = WAIT_STX; // bad checksum, discard
+                    } else {
+                        state = WAIT_ETX;
+                    }
+                    break;
+
+                case WAIT_ETX:
+                    if (byteIn == ETX) {
+                        serialBuf[payloadLen] = '\0'; // null terminate
+                        callback(serialBuf);           // pass payload string
+                    }
+                    state = WAIT_STX; // ready for next frame
+                    break;
             }
         }
     }
 
 private:
+    static constexpr uint8_t STX = 0xAA;
+    static constexpr uint8_t ETX = 0x55;
     static constexpr size_t SERIAL_BUF_SIZE = 32;
+
     char serialBuf[SERIAL_BUF_SIZE];
     size_t bufIndex;
+    uint8_t payloadLen;
+    uint8_t checksum;
 
-    // Trim leading and trailing whitespace in-place
-    static char* trimWhitespace(char* str) {
-        if (!str) return str;
+    enum State {
+        WAIT_STX,
+        READ_LEN,
+        READ_PAYLOAD,
+        READ_CHKSUM,
+        WAIT_ETX
+    } state = WAIT_STX;
 
-        // Leading
-        while (*str && isspace((unsigned char)*str)) str++;
-
-        if (*str == 0) return str;
-
-        // Trailing
-        char* end = str;
-        while (*end) end++;
-        end--;
-        while (end > str && isspace((unsigned char)*end)) {
-            *end = '\0';
-            end--;
+    // Simple checksum: XOR checksum of payload bytes
+    static uint8_t computeChecksum(const char* buf, size_t len) {
+        uint8_t checksum = 0;
+        for (size_t i = 0; i < len; i++) {
+            checksum ^= buf[i];
         }
-        return str;
+        return checksum;
     }
 };

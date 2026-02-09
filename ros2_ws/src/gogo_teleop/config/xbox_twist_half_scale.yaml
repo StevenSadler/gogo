@@ -5,3 +5,8 @@ xbox_twist:
     axis_angular_z: 3         # right stick horizontal
     scale_linear: 0.025
     scale_angular: 0.18
+
+    # Mode buttons
+    mode_idle_button: 0       # A
+    mode_test_button: 1       # B
+    mode_drive_button: 2      # X
