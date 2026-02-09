@@ -9,11 +9,9 @@
 
   <buildtool_depend>ament_python</buildtool_depend>
 
-  <build_depend>rclpy</build_depend>
-  <build_depend>gogo_interfaces</build_depend>
-
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>gogo_interfaces</exec_depend>
+  <depend>rclpy</depend>
+  <depend>geometry_msgs</depend>
+  <depend>gogo_interfaces</depend>
 
   <export>
     <build_type>ament_python</build_type>

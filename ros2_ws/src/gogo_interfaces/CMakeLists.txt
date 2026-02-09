@@ -12,6 +12,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/IntStamped.msg"
   "msg/MotorCommand.msg"
+  "msg/ModeSelect.msg"
   DEPENDENCIES std_msgs
 )
 

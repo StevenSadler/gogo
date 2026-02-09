@@ -3,5 +3,10 @@ xbox_twist:
     enable_button: 4          # LB button
     axis_linear_x: 1          # left stick vertical
     axis_angular_z: 3         # right stick horizontal
-    scale_linear: 0.05
-    scale_angular: 0.36
+    scale_linear: 0.10
+    scale_angular: 0.72
+
+    # Mode buttons
+    mode_idle_button: 0       # A
+    mode_test_button: 1       # B
+    mode_drive_button: 2      # X

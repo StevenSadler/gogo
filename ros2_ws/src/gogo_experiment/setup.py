@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'int_publisher = gogo_experiment.int_publisher:main',
             'int_serial = gogo_experiment.int_serial:main',
+            'cmdvel_sequence = gogo_experiment.cmdvel_sequence:main',
         ],
     },
 )

@@ -9,17 +9,12 @@ class TestHarness {
 public:
     TestHarness(MotorController& mc)
         : motors(mc)
-        , SPEED_STEPS{400, 600, 800, 1000}  // initialize array here
-        , NUM_STEPS(sizeof(SPEED_STEPS) / sizeof(SPEED_STEPS[0]))
-        , running(false)
-        , stepIndex(0)
-        , inStopSegment(true)
     {}
 
     // Call when entering TEST mode
     void start() {
-        running = true;
         stepIndex = 0;
+        running = true;
         inStopSegment = true;
         segmentStart = millis();
 
@@ -41,11 +36,13 @@ public:
         if (inStopSegment) {
             if (segmentElapsed >= STOP_MS) {
                 if (stepIndex < NUM_STEPS) {
-                    motors.setTarget(SPEED_STEPS[stepIndex],
-                                     SPEED_STEPS[stepIndex]);
+                    motors.setTarget(leftSpeeds[stepIndex],
+                                     rightSpeeds[stepIndex]);
 
                     Serial.print(F("Holding speed: "));
-                    Serial.println(SPEED_STEPS[stepIndex]);
+                    Serial.print((leftSpeeds[stepIndex]));
+                    Serial.print(F(", "));
+                    Serial.println(rightSpeeds[stepIndex]);
 
                     inStopSegment = false;
                     segmentStart  = now;
@@ -73,16 +70,14 @@ public:
                 segmentStart  = now;
                 stepIndex++;
             } else {
-                motors.setTarget(SPEED_STEPS[stepIndex],
-                                 SPEED_STEPS[stepIndex]);
+                motors.setTarget(leftSpeeds[stepIndex],
+                                 rightSpeeds[stepIndex]);
             }
         }
     }
 
 private:
     MotorController& motors;
-    const int SPEED_STEPS[4];
-    const size_t NUM_STEPS;
 
     // state
     bool running;
@@ -90,9 +85,10 @@ private:
     bool inStopSegment;
     unsigned long segmentStart;
 
-    // ----------------------
-    // CONFIG
-    // ----------------------
     static constexpr unsigned long HOLD_MS = 2000;   // hold each speed
     static constexpr unsigned long STOP_MS = 1000;   // stop between speeds
+
+    static constexpr size_t NUM_STEPS = 4;
+    const int leftSpeeds[NUM_STEPS]  = {400, 600, 800, 1000};
+    const int rightSpeeds[NUM_STEPS] = {400, 600, 800, 1000};
 };

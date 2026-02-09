@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
-from gogo_interfaces.msg import MotorCommand
+from gogo_interfaces.msg import MotorCommand, ModeSelect
 from gogo_control.twist_serial_connection_handler import TwistSerialConnectionHandler
 from threading import Thread, Lock, Timer
 from queue import Queue
@@ -26,7 +26,6 @@ class Watchdog:
     def _timer_callback(self):
         with self._lock:
             if self._active:
-                # Only call expired_callback if not kicked since last timer started
                 self.expired_callback()
 
     def kick(self):
@@ -51,15 +50,27 @@ class TwistSerial(Node):
     def __init__(self):
         super().__init__("twist_serial")
 
-        qos = QoSProfile(
+        cmd_vel_qos = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
             reliability=QoSReliabilityPolicy.BEST_EFFORT
         )
+        mode_select_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=QoSReliabilityPolicy.RELIABLE
+        )
+
+        self.current_mode = "MODE_IDLE"
+
+        # ROS subscriptions and publishers
+        self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, cmd_vel_qos)
+        self.mode_sub = self.create_subscription(ModeSelect, "mode_select", self.mode_callback, mode_select_qos)
+        self.pub = self.create_publisher(MotorCommand, "motor_command", cmd_vel_qos)
 
         # Parameters
-        self.declare_parameter("min_tps", 400)
-        self.declare_parameter("max_tps", 1000)
+        self.declare_parameter("min_tps", 0)
+        self.declare_parameter("max_tps", 2000)
         self.declare_parameter("wheel_radius", 0.038)
         self.declare_parameter("wheel_separation", 0.278)
         self.declare_parameter("encoder_cpr", 4741.34)
@@ -82,32 +93,23 @@ class TwistSerial(Node):
             f"PARAMS: min_tps={self.min_tps}, max_tps={self.max_tps}, ticks_per_meter={self.ticks_per_meter:.1f}"
         )
 
-
         # Expected upstream publish period
         self.publish_period_sec = 0.08  # ~12.5 Hz
         self.cmd_timeout_sec = 0.3
 
-        # ROS subscriptions and publishers
-        self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, qos)
-        self.pub = self.create_publisher(MotorCommand, "motor_command", qos)
-
         # Watchdog
         self.watchdog = Watchdog(self.cmd_timeout_sec, self.watchdog_expired_callback)
 
-        # Serial queue and thread
-        self.serial_queue = Queue()
+        # Serial connection
         if self.enable_serial:
-            self.serial = TwistSerialConnectionHandler(
+            self.serialConn = TwistSerialConnectionHandler(
                 port=self.arduino_port,
                 baudrate=self.baudrate,
                 reconnect_period_sec=1.0,
                 logger=self.get_logger()
             )
         else:
-            self.serial = None
-
-        self._stop_serial_thread = Thread(target=self.serial_worker, daemon=True)
-        self._stop_serial_thread.start()
+            self.serialConn = None
 
         # Logging throttling
         self.last_tx_log_time = 0.0
@@ -118,11 +120,66 @@ class TwistSerial(Node):
             f"serial={'enabled' if self.enable_serial else 'disabled'}"
         )
 
+    # --------------------------
+    # SERIAL FRAMING
+    # --------------------------
+    def encode_frame(self, payload: str) -> bytes:
+        """
+        Convert a payload string into a serial frame with checksum.
+        Frame format:
+            [START_BYTE][LENGTH][PAYLOAD_BYTES][CHECKSUM][END_BYTE]
+        CHECKSUM: XOR of all payload bytes
+        """
+        STX = 0xAA  # start byte
+        ETX = 0x55  # end byte
+
+        # Convert string payload to bytes
+        payload_bytes = payload.encode("ascii")
+
+        # Length of payload
+        length = len(payload_bytes)
+        if length > 31:
+            raise ValueError("Payload too long for Arduino")
+
+        checksum = 0
+        for b in payload_bytes:
+            checksum ^= b
+
+        # Build frame: start | length | payload | checksum | end
+        frame = bytes([STX, length, *payload_bytes, checksum, ETX])
+        return frame
+    
+    def send_to_serial(self, cmd: str):
+        # Send command string to Arduino
+        if self.enable_serial and self.serialConn and self.serialConn.serial:
+            frame = self.encode_frame(cmd)
+
+            # Don't write directly to serial
+            # self.serialConn.serial.write(frame)
+            # self.serialConn.serial.flush()
+
+            # Let twist_serial_connection_handler write to serial
+            self.serialConn.write(frame)
+    
+    def send_motor_cmd_to_serial(self, left: int, right: int):
+        self.send_to_serial(f"{left},{right}")
+
+
+    # --------------------------
+    # ROS CALLBACKS
+    # --------------------------
+    def mode_callback(self, msg: ModeSelect):
+        mode = msg.mode
+        self.current_mode = msg.mode
+        self.get_logger().info(f"Received mode: {mode}")
+
+        self.send_to_serial(mode)
+
     def twist_callback(self, msg: Twist):
         v = msg.linear.x
         w = msg.angular.z
-        self.get_logger().debug(f"twist_callback HIT - raw twist: v={v:.3f}, w={w:.3f}")
-        
+        self.get_logger().debug(f"twist_callback HIT - mode='{self.current_mode}' raw twist: v={v:.3f}, w={w:.3f}")
+
         # Reset watchdog timer
         self.watchdog.kick()
 
@@ -140,11 +197,19 @@ class TwistSerial(Node):
         cmd.right_tps = right_tps
         self.pub.publish(cmd)
 
-        # Queue serial payload
-        self.queue_serial(left_tps, right_tps)
+        # TODO: look into if this is necessary or just to force safety in IDLE and TEST
+        if self.current_mode != "MODE_DRIVE":
+            self.get_logger().warn(f"Skipping send: current_mode='{self.current_mode}'")
+            return
+        
+        self.get_logger().debug(f"Sending to Arduino: L={left_tps}, R={right_tps}")
 
+        self.send_motor_cmd_to_serial(left_tps, right_tps)
+
+    # --------------------------
+    # HELPER FUNCTIONS
+    # --------------------------
     def twist_to_tps(self, msg: Twist):
-        # Convert Twist (m/s, rad/s) to left/right motor TPS
         v = msg.linear.x
         w = msg.angular.z
 
@@ -153,57 +218,39 @@ class TwistSerial(Node):
         v_left = v - half_wL
         v_right = v + half_wL
 
-        left_tps = self.velocity_to_tps(v_left)
-        right_tps = self.velocity_to_tps(v_right)
+        # Convert to raw tps as floats
+        left_tps = v_left * self.ticks_per_meter
+        right_tps = v_right * self.ticks_per_meter
+
+        # Arc preserving proportional clamp
+        max_mag = max(abs(left_tps), abs(right_tps))
+        if max_mag > self.max_tps:
+            scale = self.max_tps / max_mag
+            left_tps *= scale
+            right_tps *= scale
+            self.get_logger().debug(
+                f"TSP scaled: scale={scale:.3f} -> L={left_tps:.1f}, R={right_tps:.1f}"
+            )
+
         self.get_logger().debug(
             f"twist_to_tps: v_left={v_left:.4f} m/s, v_right={v_right:.4f} m/s -> "
-            f"L={left_tps}, R={right_tps}"
+            f"L={left_tps:.1f}, R={right_tps:.1f}"
         )
-        return left_tps, right_tps
-    
-    def velocity_to_tps(self, v_mps: float) -> int:
-        # Map linear velocity to motor ticks per second with min/max TPS
-        raw_tps = v_mps * self.ticks_per_meter
 
-        if abs(raw_tps) < self.min_tps:
-            tps = 0
-            reason = f"abs(raw_tps) < min_tps ({raw_tps:.1f} < {self.min_tps})"
-        else:
-            tps = max(-self.max_tps, min(raw_tps, self.max_tps))
-            reason = f"clamped to max_tps/-max_tps if needed ({tps:.1f})"
-        
-        self.get_logger().debug(
-            f"velocity_to_tps: v_mps={v_mps:.4f} -> raw_tps={raw_tps:.1f} -> TPS={tps} ({reason})"
-        )
-        return int(tps)
+        return int(left_tps), int(right_tps)
 
-    def queue_serial(self, left: int, right: int):
-        if self.enable_serial:
-            payload = f"{left},{right}\n"
-            self.serial_queue.put(payload)
-            now = time.time()
-            if now - self.last_tx_log_time >= self.tx_log_period_sec:
-                self.get_logger().info(f"TX -> {payload.strip()}")
-                self.last_tx_log_time = now
-
-    def serial_worker(self):
-        while True:
-            try:
-                payload = self.serial_queue.get(timeout=0.05)
-                if self.serial and self.serial.connected:
-                    self.serial.write(payload)
-            except Exception:
-                continue
-
+    # --------------------------
+    # WATCHDOG & CLEANUP
+    # --------------------------
     def watchdog_expired_callback(self):
         now = self.get_clock().now().to_msg()
         self.get_logger().warn(f"[WATCHDOG] EXPIRED at {now.sec}.{now.nanosec}")
-        self.queue_serial(0, 0)
+        self.send_motor_cmd_to_serial(0, 0)
 
     def destroy_node(self):
         self.watchdog.cancel()
-        if self.serial:
-            self.serial.close()
+        if self.serialConn:
+            self.serialConn.close()
         super().destroy_node()
 
 
