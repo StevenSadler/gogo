@@ -56,11 +56,10 @@ class TwistSerialConnectionHandler:
         
         if not isinstance(data, bytes):
             raise TypeError(f"Expected bytes, got {type(data).__name__}")
-        
-        # Add this small sleep to let OS stabilize port after reconnect
-        time.sleep(0.01)
 
         try:
+            # Use write timeout to prevent blocking forever
+            self.serial.write_timeout = 0  # non-blocking
             self.serial.write(data)
         except (serial.SerialException, serial.SerialTimeoutException) as e:
             self.connected = False

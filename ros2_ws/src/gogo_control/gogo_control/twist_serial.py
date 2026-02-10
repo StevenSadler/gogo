@@ -99,6 +99,8 @@ class TwistSerial(Node):
 
         # Watchdog
         self.watchdog = Watchdog(self.cmd_timeout_sec, self.watchdog_expired_callback)
+        self.watchdog_expired = False
+        self.create_timer(0.05, self.watchdog_action)
 
         # Serial connection
         if self.enable_serial:
@@ -243,9 +245,26 @@ class TwistSerial(Node):
     # WATCHDOG & CLEANUP
     # --------------------------
     def watchdog_expired_callback(self):
+        # now = self.get_clock().now().to_msg()
+        # self.get_logger().warn(f"[WATCHDOG] EXPIRED at {now.sec}.{now.nanosec}")
+        # self.send_motor_cmd_to_serial(0, 0)
+
+        # Timer thread - do NOT touch serial here
+        self.watchdog_expired = True
+    
+    def watchdog_action(self):
+        if not self.watchdog_expired:
+            return
+
+        self.watchdog_expired = False
+
         now = self.get_clock().now().to_msg()
-        self.get_logger().warn(f"[WATCHDOG] EXPIRED at {now.sec}.{now.nanosec}")
+        self.get_logger().warn(
+            f"[WATCHDOG] EXPIRED at {now.sec}.{now.nanosec} — stopping motors"
+        )
+
         self.send_motor_cmd_to_serial(0, 0)
+
 
     def destroy_node(self):
         self.watchdog.cancel()
