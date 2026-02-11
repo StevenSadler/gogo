@@ -45,7 +45,7 @@ public:
             printer.print("[MotorController] setTarget: leftTarget=");
             printer.print(leftTarget);
             printer.print(" rightTarget=");
-            printer.println(rightTarget);
+            printer.commit(rightTarget);
         }
     }
 
@@ -76,7 +76,7 @@ public:
             printer.print(" R:");
             printer.print(rightCurrent);
             printer.print("->");
-            printer.println(rightClamped);
+            printer.commit(rightClamped);
         }
 
         leftCurrent = leftClamped;
@@ -91,7 +91,7 @@ public:
             printer.print("[MotorController] Target changed -> L:");
             printer.print(leftTarget);
             printer.print(" R:");
-            printer.println(rightTarget);
+            printer.commit(rightTarget);
 
             lastLeftTarget = leftTarget;
             lastRightTarget = rightTarget;
@@ -102,7 +102,7 @@ public:
             printer.print("[MotorController] Heartbeat -> L:");
             printer.print(leftCurrent);
             printer.print(" R:");
-            printer.println(rightCurrent);
+            printer.commit(rightCurrent);
             lastHeartbeatMs = now;
         }
     }
@@ -128,8 +128,8 @@ public:
                                      ispeed1, ispeed2,
                                      speedError1, speedError2,
                                      posError1, posError2);
-        if (ok) printer.println("Roboclaw responded");
-        else printer.println("No response from Roboclaw");
+        if (ok) printer.commit("Roboclaw responded");
+        else printer.commit("No response from Roboclaw");
         return ok;
     }
 

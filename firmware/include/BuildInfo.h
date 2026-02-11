@@ -16,14 +16,14 @@ struct BuildInfo {
         , printer(safePrinter) {}
 
     void report() const {
-        printer.println("");
-        printer.println("===== Firmware Build Info =====");
+        printer.commit();
+        printer.commit("===== Firmware Build Info =====");
         printer.print("Build hash: ");
-        printer.println(buildHash);
+        printer.commit(buildHash);
         printer.print("Build time: ");
-        printer.println(buildTimestampUTC);
+        printer.commit(buildTimestampUTC);
         printer.print("Libs hash : ");
-        printer.println(libsHash);
-        printer.println("================================");
+        printer.commit(libsHash);
+        printer.commit("================================");
     }
 };

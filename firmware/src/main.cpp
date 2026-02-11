@@ -2,8 +2,8 @@
 #include "BuildInfo.h"
 #include "MotorController.h"
 #include "SerialManager.h"
-#include "SerialSafePrinter.h"
 #include "TestHarness.h"
+#include "FramedSerialPrinter.h"
 
 // ----------------------
 // MODE
@@ -23,7 +23,7 @@ constexpr unsigned long LOOP_PERIOD_MS = 20;         // 50 Hz
 constexpr unsigned long WATCHDOG_TIMEOUT_MS = 300;   // 0.3 s
 
 SerialManager serialMgr;
-SerialSafePrinter printer(Serial);
+FramedSerialPrinter printer(Serial);
 MotorController motors(-2000, 2000, printer); // min, max
 TestHarness testHarness(motors, printer);
 BuildInfo buildInfo(printer);
@@ -38,20 +38,20 @@ unsigned long lastCommandMs = 0;  // last time a motor command was sent
 void enterIdle() {
     mode = ControlMode::IDLE_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
-    printer.println("Entered IDLE_MODE");
+    printer.commit("Entered IDLE_MODE");
 }
 
 void enterTest() {
     mode = ControlMode::TEST_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
     testHarness.start();      // reset harness timing
-    printer.println("Entered TEST_MODE");
+    printer.commit("Entered TEST_MODE");
 }
 
 void enterDrive() {
     mode = ControlMode::DRIVE_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
-    printer.println("Entered DRIVE_MODE");
+    printer.commit("Entered DRIVE_MODE");
 }
 
 const char* modeToString(ControlMode m) {
@@ -103,17 +103,17 @@ void handleSerialCommand(const char* cmd) {
 
     // Unknown command
     printer.print("Unknown command: ");
-    printer.println(cmd);
+    printer.commit(cmd);
 }
 
 void setup() {
     Serial.begin(38400);
     buildInfo.report();
     delay(100);
-    printer.println("Firmware alive");
+    printer.commit("Firmware alive");
 
     motors.begin();
-    printer.println("Probing Roboclaw...");
+    printer.commit("Probing Roboclaw...");
     motors.probe();
 
     // choose initial mode
@@ -153,7 +153,7 @@ void loop() {
     if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
         if (!watchdogExpiryNoted) {
             printer.print("[WATCHDOG] expired -> stopping motors... mode: ");
-            printer.println(modeToString(mode));
+            printer.commit(modeToString(mode));
             motors.setTarget(0,0);
             watchdogExpiryNoted = true;
         }

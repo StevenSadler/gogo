@@ -6,7 +6,10 @@ class SerialSafePrinter : public ISafePrinter {
 public:
     explicit SerialSafePrinter(HardwareSerial& s) : serial(s) {}
 
-    // this function is called by print and println
+    // Make base commit overloads visible
+    using ISafePrinter::commit;
+    
+    // Core write: one byte at a time
     void write(uint8_t byte) override {
         unsigned long start = millis();
         while (serial.availableForWrite() == 0) {
@@ -15,6 +18,10 @@ public:
             }
         }
         serial.write(byte);
+    }
+
+    void commit() override {
+        // No-op: SerialSafePrinter sends bytes immediately
     }
 
 private:

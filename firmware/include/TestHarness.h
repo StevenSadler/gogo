@@ -22,7 +22,7 @@ public:
         // Ensure motors start from zero
         motors.setTarget(0, 0);
 
-        printer.println("TestHarness started");
+        printer.commit("TestHarness started");
     }
 
     // Call every loop with current millis()
@@ -43,7 +43,7 @@ public:
                     printer.print("Holding speed: ");
                     printer.print(leftSpeeds[stepIndex]);
                     printer.print(", ");
-                    printer.println(rightSpeeds[stepIndex]);
+                    printer.commit(rightSpeeds[stepIndex]);
 
                     inStopSegment = false;
                     segmentStart  = now;
@@ -51,7 +51,7 @@ public:
                     // End of test: force motors fully stopped
                     motors.setTarget(0, 0);
 
-                    printer.println("Test complete, motors stopped.");
+                    printer.commit("Test complete, motors stopped.");
                     running = false;
                 }
             } else {
@@ -65,7 +65,7 @@ public:
             if (segmentElapsed >= HOLD_MS) {
                 motors.setTarget(0, 0);
 
-                printer.println("Stopping between speeds");
+                printer.commit("Stopping between speeds");
 
                 inStopSegment = true;
                 segmentStart  = now;

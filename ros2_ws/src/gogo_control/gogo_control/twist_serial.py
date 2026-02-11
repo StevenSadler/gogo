@@ -108,10 +108,13 @@ class TwistSerial(Node):
                 port=self.arduino_port,
                 baudrate=self.baudrate,
                 reconnect_period_sec=1.0,
-                logger=self.get_logger()
+                logger=self.get_logger(),
+                frame_callback=self.handle_serial_frame,
             )
+            self.create_timer(0.05, self.serial_read_timer_callback)
         else:
             self.serialConn = None
+        
 
         # Logging throttling
         self.last_tx_log_time = 0.0
@@ -121,47 +124,11 @@ class TwistSerial(Node):
             f"TwistSerial node initialized: watchdog {self.cmd_timeout_sec*1000:.1f} ms, "
             f"serial={'enabled' if self.enable_serial else 'disabled'}"
         )
-
-    # --------------------------
-    # SERIAL FRAMING
-    # --------------------------
-    def encode_frame(self, payload: str) -> bytes:
-        """
-        Convert a payload string into a serial frame with checksum.
-        Frame format:
-            [START_BYTE][LENGTH][PAYLOAD_BYTES][CHECKSUM][END_BYTE]
-        CHECKSUM: XOR of all payload bytes
-        """
-        STX = 0xAA  # start byte
-        ETX = 0x55  # end byte
-
-        # Convert string payload to bytes
-        payload_bytes = payload.encode("ascii")
-
-        # Length of payload
-        length = len(payload_bytes)
-        if length > 31:
-            raise ValueError("Payload too long for Arduino")
-
-        checksum = 0
-        for b in payload_bytes:
-            checksum ^= b
-
-        # Build frame: start | length | payload | checksum | end
-        frame = bytes([STX, length, *payload_bytes, checksum, ETX])
-        return frame
     
     def send_to_serial(self, cmd: str):
         # Send command string to Arduino
         if self.enable_serial and self.serialConn and self.serialConn.serial:
-            frame = self.encode_frame(cmd)
-
-            # Don't write directly to serial
-            # self.serialConn.serial.write(frame)
-            # self.serialConn.serial.flush()
-
-            # Let twist_serial_connection_handler write to serial
-            self.serialConn.write(frame)
+            self.serialConn.write_cmd(cmd)
     
     def send_motor_cmd_to_serial(self, left: int, right: int):
         self.send_to_serial(f"{left},{right}")
@@ -240,6 +207,13 @@ class TwistSerial(Node):
         )
 
         return int(left_tps), int(right_tps)
+    
+    def handle_serial_frame(self, payload:bytes):
+        msg = payload.decode("ascii")
+        self.get_logger().info(f"Arduino says: {msg}")
+    
+    def serial_read_timer_callback(self):
+        self.serialConn.read_available_bytes()
 
     # --------------------------
     # WATCHDOG & CLEANUP

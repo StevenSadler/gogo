@@ -3,26 +3,36 @@
 import serial
 import time
 
+STX = 0xAA
+ETX = 0x55
 
 class TwistSerialConnectionHandler:
+    
+
     def __init__(
         self,
         port: str,
         baudrate: int,
         reconnect_period_sec: float,
         logger=None,
+        frame_callback=None,
     ):
         self.port = port
         self.baudrate = baudrate
         self.reconnect_period_sec = reconnect_period_sec
         self.logger = logger
+        self.frame_callback = frame_callback
 
         self.serial = None
         self.connected = False
         self.last_reconnect_attempt = 0.0
+        self._rx_buffer = bytearray()
 
         self._connect()
-        
+
+    # --------------------------
+    # LOGGING HELPERS
+    # --------------------------
     def _log_info(self, msg: str):
         if self.logger:
             self.logger.info(msg)
@@ -34,7 +44,10 @@ class TwistSerialConnectionHandler:
     def _log_error(self, msg: str):
         if self.logger:
             self.logger.error(msg)
-
+    
+    # --------------------------
+    # CONNECTION
+    # --------------------------
     def _connect(self):
         try:
             self.serial = serial.Serial(
@@ -49,27 +62,7 @@ class TwistSerialConnectionHandler:
             self.connected = False
             self.serial = None
             self._log_warn(f"Serial connection failed: {e}")
-
-    def write(self, data: bytes):
-        if not self.connected or not self.serial:
-            return
-        
-        if not isinstance(data, bytes):
-            raise TypeError(f"Expected bytes, got {type(data).__name__}")
-
-        try:
-            # Use write timeout to prevent blocking forever
-            self.serial.write_timeout = 0  # non-blocking
-            self.serial.write(data)
-        except (serial.SerialException, serial.SerialTimeoutException) as e:
-            self.connected = False
-            try:
-                self.serial.close()
-            except Exception:
-                pass
-            self.serial = None
-            self._log_error(f"Serial write failed: {e}")
-
+    
     def periodic_reconnect(self):
         """Call periodically from a ROS timer."""
         if self.connected:
@@ -92,3 +85,135 @@ class TwistSerialConnectionHandler:
                 pass
         self.serial = None
         self.connected = False
+    
+    # --------------------------
+    # WRITING
+    # --------------------------
+    def _write(self, data: bytes):
+        if not self.connected or not self.serial:
+            return
+        
+        if not isinstance(data, bytes):
+            raise TypeError(f"Expected bytes, got {type(data).__name__}")
+
+        try:
+            # Use write timeout to prevent blocking forever
+            self.serial.write_timeout = 0  # non-blocking
+            self.serial.write(data)
+        except (serial.SerialException, serial.SerialTimeoutException) as e:
+            self.connected = False
+            try:
+                self.serial.close()
+            except Exception:
+                pass
+            self.serial = None
+            self._log_error(f"Serial write failed: {e}")
+    
+    def encode_frame(self, payload: str) -> bytes:
+        """
+        Convert a payload string into a serial frame with checksum.
+        Frame format:
+            [START_BYTE][LENGTH][PAYLOAD_BYTES][CHECKSUM][END_BYTE]
+        CHECKSUM: XOR of all payload bytes
+        """
+
+        # Convert string payload to bytes
+        payload_bytes = payload.encode("ascii")
+
+        length = len(payload_bytes)
+        if length > 31:
+            raise ValueError("Payload too long for Arduino")
+        checksum = self._calculate_xor_checksum(payload_bytes)
+
+        # Build frame: start | length | payload | checksum | end
+        frame = bytes([STX, length, *payload_bytes, checksum, ETX])
+        return frame
+    
+    def write_cmd(self, cmd: str):
+        """Send a string command automatically framed"""
+        frame = self.encode_frame(cmd)
+        self._write(frame)
+
+    # --------------------------
+    # READING / BUFFERING
+    # --------------------------
+    def read_available_bytes(self):
+        """
+        Call frequently (e.g., in a ROS timer or loop).
+        Reads all available bytes from serial and feeds them to the buffer.
+        Calls frame_callback for any valid frames.
+        """
+        if not self.serial or not self.connected:
+            return
+
+        while self.serial.in_waiting:
+            b = self.serial.read(1)
+            if b:
+                self._feed_byte(b)
+
+    def _feed_byte(self, b: bytes):
+        """Append a single byte to the rx buffer and attempt to extract frame if ETX."""
+        self._rx_buffer += b
+        if b == bytes([ETX]):
+            # self._try_extract_frame()
+            self._process_buffer()
+
+    # --------------------------
+    # Frame processing helpers
+    # --------------------------
+    def _calculate_xor_checksum(self, payload: bytes):
+        checksum = 0
+        for b in payload:
+            checksum ^= b
+        return checksum
+    
+    def _find_next_stx(self):
+        """Return index of next STX in buffer, or None if not found."""
+        try:
+            return self._rx_buffer.index(STX)
+        except ValueError:
+            return None
+    
+    def _process_buffer(self):
+        """Scan buffer for valid frames and call frame_callback."""
+        while True:
+            stx_idx = self._find_next_stx()
+            if stx_idx is None:
+                # No STX in buffer, discard everything
+                self._rx_buffer.clear()
+                return
+
+            # Remove garbage before STX, stx_idx becomes 0 again
+            if stx_idx > 0:
+                self._rx_buffer = self._rx_buffer[stx_idx:]
+
+            if len(self._rx_buffer) < 4:  # minimum frame: STX + LEN + CHK + ETX
+                return
+
+            length = self._rx_buffer[1]
+            frame_end_idx = 2 + length + 1  # payload + checksum
+            if len(self._rx_buffer) <= frame_end_idx:
+                # Full frame not received yet
+                return
+
+            if self._rx_buffer[frame_end_idx] != ETX:
+                # Corrupted frame, skip this STX
+                self._rx_buffer = self._rx_buffer[1:]
+                continue
+
+            payload = self._rx_buffer[2:2+length]
+            checksum = self._rx_buffer[2+length]
+
+            if checksum != self._calculate_xor_checksum(payload):
+                # Bad checksum, skip this STX
+                self._rx_buffer = self._rx_buffer[1:]
+                continue
+
+            # Valid frame
+            if self.frame_callback:
+                self.frame_callback(payload)
+
+            # Remove processed frame from buffer
+            self._rx_buffer = self._rx_buffer[frame_end_idx+1:]
+
+
