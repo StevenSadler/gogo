@@ -111,7 +111,7 @@ class TwistSerial(Node):
                 logger=self.get_logger(),
                 frame_callback=self.handle_serial_frame,
             )
-            self.create_timer(0.05, self.serial_read_timer_callback)
+            self.create_timer(0.02, self.serial_read_timer_callback)  # 50Hz to match
         else:
             self.serialConn = None
         
@@ -210,7 +210,7 @@ class TwistSerial(Node):
     
     def handle_serial_frame(self, payload:bytes):
         msg = payload.decode("ascii")
-        self.get_logger().info(f"Arduino says: {msg}")
+        self.get_logger().info(f"FW says: {msg}")
     
     def serial_read_timer_callback(self):
         self.serialConn.read_available_bytes()

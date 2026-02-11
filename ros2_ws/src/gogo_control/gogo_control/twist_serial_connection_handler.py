@@ -167,53 +167,84 @@ class TwistSerialConnectionHandler:
             checksum ^= b
         return checksum
     
-    def _find_next_stx(self):
-        """Return index of next STX in buffer, or None if not found."""
-        try:
-            return self._rx_buffer.index(STX)
-        except ValueError:
-            return None
-    
     def _process_buffer(self):
-        """Scan buffer for valid frames and call frame_callback."""
-        while True:
-            stx_idx = self._find_next_stx()
-            if stx_idx is None:
-                # No STX in buffer, discard everything
-                self._rx_buffer.clear()
-                return
+        """
+        Process rx_buffer, extracting and handling complete frames.
+        """
+        while self._rx_buffer:
+            start_idx = self._find_frame_start()
+            if start_idx is None:
+                # No start-of-frame found; stop processing
+                break
 
-            # Remove garbage before STX, stx_idx becomes 0 again
-            if stx_idx > 0:
-                self._rx_buffer = self._rx_buffer[stx_idx:]
+            if not self._has_complete_frame(start_idx):
+                # Not enough bytes yet for a full frame
+                break
 
-            if len(self._rx_buffer) < 4:  # minimum frame: STX + LEN + CHK + ETX
-                return
-
-            length = self._rx_buffer[1]
-            frame_end_idx = 2 + length + 1  # payload + checksum
-            if len(self._rx_buffer) <= frame_end_idx:
-                # Full frame not received yet
-                return
-
-            if self._rx_buffer[frame_end_idx] != ETX:
-                # Corrupted frame, skip this STX
-                self._rx_buffer = self._rx_buffer[1:]
+            if not self._validate_checksum_and_etx(start_idx):
+                # Bad checksum or ETX; discard first byte and continue
+                self._rx_buffer.pop(0)
                 continue
 
-            payload = self._rx_buffer[2:2+length]
-            checksum = self._rx_buffer[2+length]
-
-            if checksum != self._calculate_xor_checksum(payload):
-                # Bad checksum, skip this STX
-                self._rx_buffer = self._rx_buffer[1:]
-                continue
-
-            # Valid frame
+            payload, frame_length = self._extract_frame(start_idx)
             if self.frame_callback:
                 self.frame_callback(payload)
 
-            # Remove processed frame from buffer
-            self._rx_buffer = self._rx_buffer[frame_end_idx+1:]
+            # Remove the processed frame from the buffer
+            self._rx_buffer = self._rx_buffer[start_idx + frame_length:]
+    
+    def _find_frame_start(self):
+        """
+        Returns index of start-of-frame (STX) in rx_buffer, or None if not found.
+        """
+        for i, byte in enumerate(self._rx_buffer):
+            if byte == STX:
+                return i
+        return None
+
+    def _has_complete_frame(self, start_idx):
+        """
+        Returns True if rx_buffer contains all bytes for the frame starting at start_idx.
+        """
+        if len(self._rx_buffer) <= start_idx + 1:
+            return False  # can't read length byte yet
+        length_byte = self._rx_buffer[start_idx + 1]
+        frame_end_idx = start_idx + 2 + length_byte + 1  # 2: STX+LEN, +1: ETX
+        return len(self._rx_buffer) >= frame_end_idx
+
+    def _validate_checksum_and_etx(self, start_idx):
+        """
+        Returns True if checksum matches and ETX is correct; False otherwise.
+        """
+        length_byte = self._rx_buffer[start_idx + 1]
+        payload_start = start_idx + 2
+        payload_end = payload_start + length_byte
+        payload = self._rx_buffer[payload_start:payload_end]
+        checksum = self._rx_buffer[payload_end]
+
+        # Calculate checksum
+        if self._calculate_xor_checksum(payload) != checksum:
+            return False
+        
+        # Check ETX
+        etx_idx = payload_end + 1
+        if self._rx_buffer[etx_idx] != ETX:
+            return False
+        
+        return True
+
+    def _extract_frame(self, start_idx):
+        """
+        Extracts payload and frame length
+        """
+        length_byte = self._rx_buffer[start_idx + 1]
+        payload_start = start_idx + 2
+        payload_end = payload_start + length_byte
+        payload = self._rx_buffer[payload_start:payload_end]
+        frame_length = 2 + length_byte + 2
+        return payload, frame_length
+    
+
+
 
 
