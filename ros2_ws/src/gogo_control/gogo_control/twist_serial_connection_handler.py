@@ -5,9 +5,13 @@ import time
 
 STX = 0xAA
 ETX = 0x55
+STX_SIZE = 1
+LEN_SIZE = 1
+CHECKSUM_SIZE = 1
+ETX_SIZE = 1
+MAX_PAYLOAD_LENGTH = 31
 
 class TwistSerialConnectionHandler:
-    
 
     def __init__(
         self,
@@ -121,7 +125,7 @@ class TwistSerialConnectionHandler:
         payload_bytes = payload.encode("ascii")
 
         length = len(payload_bytes)
-        if length > 31:
+        if length > MAX_PAYLOAD_LENGTH:
             raise ValueError("Payload too long for Arduino")
         checksum = self._calculate_xor_checksum(payload_bytes)
 
@@ -159,7 +163,7 @@ class TwistSerialConnectionHandler:
             self._process_buffer()
 
     # --------------------------
-    # Frame processing helpers
+    # FRAME PROCESSING
     # --------------------------
     def _calculate_xor_checksum(self, payload: bytes):
         checksum = 0
@@ -170,79 +174,75 @@ class TwistSerialConnectionHandler:
     def _process_buffer(self):
         """
         Process rx_buffer, extracting and handling complete frames.
+        If need to wait for more bytes, break
+        If need to clear corrupted frame, continue
+
+        A complete frame includes these bytes:
+        [STX][LEN][PAYLOAD...][CHECKSUM][ETX]
+          1    1    N           1         1
         """
         while True:
             start_idx = self._find_frame_start()
             if start_idx is None:
-                # No start-of-frame found; stop processing
+                # No STX found, clear garbage and stop
+                self._rx_buffer.clear()
                 break
-
-            if not self._has_complete_frame(start_idx):
-                # Not enough bytes yet for a full frame
+            elif start_idx > 0:
+                # Remove garbage before STX
+                self._rx_buffer = self._rx_buffer[start_idx:]
+                start_idx = 0
+            
+            # Check if we have length byte
+            if not self._has_length(start_idx):
                 break
+            
+            payload_length = self._payload_length(start_idx)
 
-            if not self._validate_checksum_and_etx(start_idx):
-                # Bad checksum or ETX; discard first byte and continue
-                self._rx_buffer.pop(0)
+            # Check for invalid length
+            if payload_length > MAX_PAYLOAD_LENGTH:
+                self._rx_buffer.pop(start_idx)
                 continue
 
-            payload, frame_length = self._extract_frame(start_idx)
+            frame_length = self._frame_length(payload_length)
+
+            # Check if full frame is present
+            if len(self._rx_buffer) < start_idx + frame_length:
+                break
+
+            payload_start = start_idx + STX_SIZE + LEN_SIZE
+            payload_end = payload_start + payload_length
+            payload = self._rx_buffer[payload_start:payload_end]
+            checksum = self._rx_buffer[payload_end]
+            etx = self._rx_buffer[payload_end + CHECKSUM_SIZE]
+
+            # Validate checksum and ETX
+            if self._calculate_xor_checksum(payload) != checksum or etx != ETX:
+                # Corrupted frame -> remove first byte
+                self._rx_buffer.pop(0)
+                continue
+            
+            # Valid frame -> call callback
             if self.frame_callback:
                 self.frame_callback(payload)
 
-            # Remove the processed frame from the buffer
+            # Remove the processed frame
             self._rx_buffer = self._rx_buffer[start_idx + frame_length:]
     
     def _find_frame_start(self):
-        """
-        Returns index of start-of-frame (STX) in rx_buffer, or None if not found.
-        """
         for i, byte in enumerate(self._rx_buffer):
             if byte == STX:
                 return i
         return None
-
-    def _has_complete_frame(self, start_idx):
-        """
-        Returns True if rx_buffer contains all bytes for the frame starting at start_idx.
-        """
-        if len(self._rx_buffer) <= start_idx + 1:
-            return False  # can't read length byte yet
-        length_byte = self._rx_buffer[start_idx + 1]
-        frame_end_idx = start_idx + 2 + length_byte + 1  # 2: STX+LEN, +1: ETX
-        return len(self._rx_buffer) >= frame_end_idx
-
-    def _validate_checksum_and_etx(self, start_idx):
-        """
-        Returns True if checksum matches and ETX is correct; False otherwise.
-        """
-        length_byte = self._rx_buffer[start_idx + 1]
-        payload_start = start_idx + 2
-        payload_end = payload_start + length_byte
-        payload = self._rx_buffer[payload_start:payload_end]
-        checksum = self._rx_buffer[payload_end]
-
-        # Calculate checksum
-        if self._calculate_xor_checksum(payload) != checksum:
-            return False
-        
-        # Check ETX
-        etx_idx = payload_end + 1
-        if self._rx_buffer[etx_idx] != ETX:
-            return False
-        
-        return True
-
-    def _extract_frame(self, start_idx):
-        """
-        Extracts payload and frame length
-        """
-        length_byte = self._rx_buffer[start_idx + 1]
-        payload_start = start_idx + 2
-        payload_end = payload_start + length_byte
-        payload = self._rx_buffer[payload_start:payload_end]
-        frame_length = 2 + length_byte + 2
-        return payload, frame_length
+    
+    def _has_length(self, start_idx):
+        remaining = len(self._rx_buffer) - start_idx
+        return remaining >= STX_SIZE + LEN_SIZE
+    
+    def _payload_length(self, start_idx):
+        return self._rx_buffer[start_idx + STX_SIZE]
+    
+    def _frame_length(self, payload_length):
+        return STX_SIZE + LEN_SIZE + payload_length + CHECKSUM_SIZE + ETX_SIZE
     
 
 

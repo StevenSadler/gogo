@@ -112,7 +112,7 @@ class TwistSerial(Node):
                 frame_callback=self.handle_serial_frame,
             )
             self.create_timer(0.02, self.serial_read_timer_callback)  # 50Hz to match
-            self.create_timer(0.5, self.serialConn.periodic_reconnect)
+            self.create_timer(0.5, self.serial_reconnect_timer_callback)
         else:
             self.serialConn = None
         
@@ -220,7 +220,12 @@ class TwistSerial(Node):
             self.get_logger().info(f"FW says: {msg}")
     
     def serial_read_timer_callback(self):
-        self.serialConn.read_available_bytes()
+        if self.enable_serial and self.serialConn:
+            self.serialConn.read_available_bytes()
+    
+    def serial_reconnect_timer_callback(self):
+        if self.enable_serial and self.serialConn:
+            self.serialConn.periodic_reconnect()
 
     # --------------------------
     # WATCHDOG & CLEANUP
