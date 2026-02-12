@@ -1,14 +1,15 @@
 #pragma once
 #include <Arduino.h>
 #include "MotorController.h"
+#include "ISafePrinter.h"
 
 // ----------------------
 // TEST HARNESS
 // ----------------------
 class TestHarness {
 public:
-    TestHarness(MotorController& mc)
-        : motors(mc)
+    TestHarness(MotorController& mc, ISafePrinter& safePrinter)
+        : motors(mc), printer(safePrinter)
     {}
 
     // Call when entering TEST mode
@@ -21,7 +22,7 @@ public:
         // Ensure motors start from zero
         motors.setTarget(0, 0);
 
-        Serial.println(F("TestHarness started"));
+        printer.commit("TestHarness started");
     }
 
     // Call every loop with current millis()
@@ -39,10 +40,10 @@ public:
                     motors.setTarget(leftSpeeds[stepIndex],
                                      rightSpeeds[stepIndex]);
 
-                    Serial.print(F("Holding speed: "));
-                    Serial.print((leftSpeeds[stepIndex]));
-                    Serial.print(F(", "));
-                    Serial.println(rightSpeeds[stepIndex]);
+                    printer.print("Holding speed: ");
+                    printer.print(leftSpeeds[stepIndex]);
+                    printer.print(", ");
+                    printer.commit(rightSpeeds[stepIndex]);
 
                     inStopSegment = false;
                     segmentStart  = now;
@@ -50,7 +51,7 @@ public:
                     // End of test: force motors fully stopped
                     motors.setTarget(0, 0);
 
-                    Serial.println(F("Test complete, motors stopped."));
+                    printer.commit("Test complete, motors stopped.");
                     running = false;
                 }
             } else {
@@ -64,7 +65,7 @@ public:
             if (segmentElapsed >= HOLD_MS) {
                 motors.setTarget(0, 0);
 
-                Serial.println(F("Stopping between speeds"));
+                printer.commit("Stopping between speeds");
 
                 inStopSegment = true;
                 segmentStart  = now;
@@ -78,6 +79,7 @@ public:
 
 private:
     MotorController& motors;
+    ISafePrinter& printer;
 
     // state
     bool running;
