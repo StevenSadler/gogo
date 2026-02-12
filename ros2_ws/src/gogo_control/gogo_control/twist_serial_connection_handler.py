@@ -171,7 +171,7 @@ class TwistSerialConnectionHandler:
         """
         Process rx_buffer, extracting and handling complete frames.
         """
-        while self._rx_buffer:
+        while True:
             start_idx = self._find_frame_start()
             if start_idx is None:
                 # No start-of-frame found; stop processing
