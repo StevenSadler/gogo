@@ -150,10 +150,20 @@ class TwistSerialConnectionHandler:
         if not self.serial or not self.connected:
             return
 
-        while self.serial.in_waiting:
-            b = self.serial.read(1)
-            if b:
-                self._feed_byte(b)
+        try:
+            while self.serial.in_waiting:
+                b = self.serial.read(1)
+                if b:
+                    self._feed_byte(b)
+        except (serial.SerialException, OSError) as e:
+            # Serial port is gone
+            self.connected = False
+            try:
+                self.serial.close()
+            except Exception:
+                pass
+            self.serial = None
+            self._log_warn(f"Serial port closed unexpectedly: {e}")
 
     def _feed_byte(self, b: bytes):
         """Append a single byte to the rx buffer and attempt to extract frame if ETX."""
@@ -174,12 +184,21 @@ class TwistSerialConnectionHandler:
     def _process_buffer(self):
         """
         Process rx_buffer, extracting and handling complete frames.
-        If need to wait for more bytes, break
-        If need to clear corrupted frame, continue
+        Supports multiple frames per call.
 
-        A complete frame includes these bytes:
-        [STX][LEN][PAYLOAD...][CHECKSUM][ETX]
-          1    1    N           1         1
+        Note:
+        - If we need to wait for more bytes, break
+        - If we need to clear corrupted frame, continue
+
+        Frame format:
+            [STX][LEN][PAYLOAD...][CHECKSUM][ETX]
+            1    1    N           1         1
+        
+        Behavior:
+        - Strips and garbage before the first STX.
+        - Discards corrupted frames, one byte immediately, 
+          remaining bytes on next iteration.
+        - Calls frame_callback(payload) for each valid frame.
         """
         while True:
             start_idx = self._find_frame_start()
@@ -190,25 +209,27 @@ class TwistSerialConnectionHandler:
             elif start_idx > 0:
                 # Remove garbage before STX
                 self._rx_buffer = self._rx_buffer[start_idx:]
-                start_idx = 0
             
-            # Check if we have length byte
-            if not self._has_length(start_idx):
+            # From here, first byte is guaranteed to be STX
+            # Check if length byte is present
+            if len(self._rx_buffer) < STX_SIZE + LEN_SIZE:
                 break
             
-            payload_length = self._payload_length(start_idx)
+            payload_length = self._rx_buffer[STX_SIZE]
 
-            # Check for invalid length
+            # Reject invalid lengths
             if payload_length > MAX_PAYLOAD_LENGTH:
-                self._rx_buffer.pop(start_idx)
+                # drop first byte and resync
+                self._rx_buffer.pop(0)
                 continue
 
-            frame_length = self._frame_length(payload_length)
+            frame_length = STX_SIZE + LEN_SIZE + payload_length + CHECKSUM_SIZE + ETX_SIZE
 
-            # Check if full frame is present
-            if len(self._rx_buffer) < start_idx + frame_length:
+            # Wait for full frame if not all bytes received yet
+            if len(self._rx_buffer) < frame_length:
                 break
 
+            # Extract payload, checksum, ETX
             payload_start = start_idx + STX_SIZE + LEN_SIZE
             payload_end = payload_start + payload_length
             payload = self._rx_buffer[payload_start:payload_end]
@@ -217,7 +238,7 @@ class TwistSerialConnectionHandler:
 
             # Validate checksum and ETX
             if self._calculate_xor_checksum(payload) != checksum or etx != ETX:
-                # Corrupted frame -> remove first byte
+                 # drop first byte and resync
                 self._rx_buffer.pop(0)
                 continue
             
@@ -226,23 +247,13 @@ class TwistSerialConnectionHandler:
                 self.frame_callback(payload)
 
             # Remove the processed frame
-            self._rx_buffer = self._rx_buffer[start_idx + frame_length:]
+            self._rx_buffer = self._rx_buffer[frame_length:]
     
     def _find_frame_start(self):
         for i, byte in enumerate(self._rx_buffer):
             if byte == STX:
                 return i
         return None
-    
-    def _has_length(self, start_idx):
-        remaining = len(self._rx_buffer) - start_idx
-        return remaining >= STX_SIZE + LEN_SIZE
-    
-    def _payload_length(self, start_idx):
-        return self._rx_buffer[start_idx + STX_SIZE]
-    
-    def _frame_length(self, payload_length):
-        return STX_SIZE + LEN_SIZE + payload_length + CHECKSUM_SIZE + ETX_SIZE
     
 
 
