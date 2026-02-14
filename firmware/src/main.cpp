@@ -3,16 +3,9 @@
 #include "MotorController.h"
 #include "SerialManager.h"
 #include "TestHarness.h"
-#include "FramedSerialPrinter.h"
-
-// ----------------------
-// MODE
-// ----------------------
-enum class ControlMode {
-    IDLE_MODE,
-    TEST_MODE,
-    DRIVE_MODE
-};
+#include "StructuredTelemetry.h"
+#include "MessageBuilder.h"
+#include "ControlMode.h"
 
 ControlMode mode;
 
@@ -23,10 +16,10 @@ constexpr unsigned long LOOP_PERIOD_MS = 20;         // 50 Hz
 constexpr unsigned long WATCHDOG_TIMEOUT_MS = 300;   // 0.3 s
 
 SerialManager serialMgr;
-FramedSerialPrinter printer(Serial);
-MotorController motors(-2000, 2000, printer); // min, max
-TestHarness testHarness(motors, printer);
-BuildInfo buildInfo(printer);
+StructuredTelemetry telemetry(Serial);
+MotorController motors(-2000, 2000, telemetry); // min, max
+TestHarness testHarness(motors, telemetry);
+BuildInfo buildInfo(telemetry);
 
 bool watchdogExpiryNoted = false; // did watchdog just expire
 unsigned long lastLoopMs = 0;
@@ -38,20 +31,20 @@ unsigned long lastCommandMs = 0;  // last time a motor command was sent
 void enterIdle() {
     mode = ControlMode::IDLE_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
-    printer.commit("Entered IDLE_MODE");
+    telemetry.sendModeAck(mode);
 }
 
 void enterTest() {
     mode = ControlMode::TEST_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
     testHarness.start();      // reset harness timing
-    printer.commit("Entered TEST_MODE");
+    telemetry.sendModeAck(mode);
 }
 
 void enterDrive() {
     mode = ControlMode::DRIVE_MODE;
     motors.setTarget(0, 0);   // immediately stop motors
-    printer.commit("Entered DRIVE_MODE");
+    telemetry.sendModeAck(mode);
 }
 
 const char* modeToString(ControlMode m) {
@@ -102,18 +95,21 @@ void handleSerialCommand(const char* cmd) {
     }
 
     // Unknown command
-    printer.print("Unknown command: ");
-    printer.commit(cmd);
+    telemetry.sendError(SubID::UNKNOWN_COMMAND, 
+        MessageBuilder::build(FrameID::ERROR, "Unknown command: %s", cmd));
 }
 
 void setup() {
     Serial.begin(38400);
     buildInfo.report();
     delay(100);
-    printer.commit("Firmware alive");
+    telemetry.sendLog(SubID::INFO_GENERAL, 
+        MessageBuilder::build(FrameID::LOG, "Firmware alive"));
 
     motors.begin();
-    printer.commit("Probing Roboclaw...");
+    telemetry.sendLog(SubID::INFO_GENERAL, 
+        MessageBuilder::build(FrameID::LOG, "Probing Roboclaw..."));
+
     motors.probe();
 
     // choose initial mode
@@ -152,9 +148,8 @@ void loop() {
     // Watchdog check (applies to TEST and DRIVE only)
     if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
         if (!watchdogExpiryNoted) {
-            printer.print("[WATCHDOG] expired -> stopping motors... mode: ");
-            printer.commit(modeToString(mode));
             motors.setTarget(0,0);
+            telemetry.sendStatusEvent(SubID::WATCHDOG_EXPIRED);
             watchdogExpiryNoted = true;
         }
     } else {

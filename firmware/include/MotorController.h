@@ -3,20 +3,20 @@
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <Basicmicro.h>
-#include "ISafePrinter.h"
+#include "StructuredTelemetry.h"
 
 class MotorController {
 public:
     // ----------------------
     // CONSTRUCTOR
     // ----------------------
-    MotorController(int minCmd, int maxCmd, ISafePrinter& safePrinter)
+    MotorController(int minCmd, int maxCmd, StructuredTelemetry& telemetry)
         : CMD_MIN(minCmd), CMD_MAX(maxCmd),
           leftTarget(0), rightTarget(0),
           leftCurrent(0), rightCurrent(0),
           lastLeftTarget(0), lastRightTarget(0),
           roboclaw(&roboclawSerial, 10000), // SoftwareSerial + 10ms timeout
-          printer(safePrinter)
+          telemetry(telemetry)
     {}
 
     // ----------------------
@@ -42,10 +42,12 @@ public:
         }
 
         if (lastLeftTarget != leftTarget || lastRightTarget != rightTarget) {
-            printer.print("[MotorController] setTarget: leftTarget=");
-            printer.print(leftTarget);
-            printer.print(" rightTarget=");
-            printer.commit(rightTarget);
+            telemetry.sendLog(SubID::INFO_GENERAL, 
+                MessageBuilder::build(FrameID::LOG, "setTarget: %d, %d",
+                leftTarget, rightTarget));
+            
+            lastLeftTarget = leftTarget;
+            lastRightTarget = rightTarget;
         }
     }
 
@@ -69,14 +71,7 @@ public:
         int rightClamped = constrain(rightCurrent, CMD_MIN, CMD_MAX);
 
         if (leftClamped != leftCurrent || rightClamped != rightCurrent) {
-            printer.print("[MotorController] WARNING: Final clamp applied -> L:");
-            printer.print(leftCurrent);
-            printer.print("->");
-            printer.print(leftClamped);
-            printer.print(" R:");
-            printer.print(rightCurrent);
-            printer.print("->");
-            printer.commit(rightClamped);
+            telemetry.sendStatusEvent(SubID::MOTOR_CLAMP_APPLIED);
         }
 
         leftCurrent = leftClamped;
@@ -87,22 +82,9 @@ public:
         roboclaw.SpeedM1(address, leftCurrent);
         roboclaw.SpeedM2(address, rightCurrent);
 
-        if (lastLeftTarget != leftTarget || lastRightTarget != rightTarget) {
-            printer.print("[MotorController] Target changed -> L:");
-            printer.print(leftTarget);
-            printer.print(" R:");
-            printer.commit(rightTarget);
-
-            lastLeftTarget = leftTarget;
-            lastRightTarget = rightTarget;
-        }
-
         static unsigned long lastHeartbeatMs = 0;
-        if (now - lastHeartbeatMs >= 1000) {
-            printer.print("[MotorController] Heartbeat -> L:");
-            printer.print(leftCurrent);
-            printer.print(" R:");
-            printer.commit(rightCurrent);
+        if (now - lastHeartbeatMs >= 5000) {
+            telemetry.sendHeartbeat(leftCurrent, rightCurrent);
             lastHeartbeatMs = now;
         }
     }
@@ -128,8 +110,13 @@ public:
                                      ispeed1, ispeed2,
                                      speedError1, speedError2,
                                      posError1, posError2);
-        if (ok) printer.commit("Roboclaw responded");
-        else printer.commit("No response from Roboclaw");
+        if (ok) {
+            telemetry.sendStatusEvent(SubID::ROBOCLAW_CONNECTED);
+        } 
+        else {
+            telemetry.sendError(SubID::MOTOR_FAULT,
+                MessageBuilder::build(FrameID::ERROR, "Roboclaw not responding"));
+        }
         return ok;
     }
 
@@ -150,5 +137,5 @@ private:
     SoftwareSerial roboclawSerial{10, 11};
     Basicmicro roboclaw;
 
-    ISafePrinter& printer; // <-- use this for all printing
+    StructuredTelemetry& telemetry;
 };

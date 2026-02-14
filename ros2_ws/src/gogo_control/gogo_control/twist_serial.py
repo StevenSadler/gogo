@@ -6,6 +6,7 @@ from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 from gogo_interfaces.msg import MotorCommand, ModeSelect
 from gogo_control.twist_serial_connection_handler import TwistSerialConnectionHandler
+from gogo_control.serial_message_parser import SerialMessageParser
 from threading import Thread, Lock, Timer
 from queue import Queue
 from math import pi
@@ -115,6 +116,9 @@ class TwistSerial(Node):
             self.create_timer(0.5, self.serial_reconnect_timer_callback)
         else:
             self.serialConn = None
+
+        # Serial message parser
+        self.serial_parser = SerialMessageParser(self.get_logger())
         
 
         # Logging throttling
@@ -210,14 +214,7 @@ class TwistSerial(Node):
         return int(left_tps), int(right_tps)
     
     def handle_serial_frame(self, payload:bytes):
-        msg = payload.decode("ascii")
-
-        if "[WATCHDOG]" in msg or "WARNING" in msg:
-            self.get_logger().warn(f"FW says: {msg}")
-        elif "Heartbeat" in msg:
-            self.get_logger().debug(f"FW says: {msg}")
-        else:
-            self.get_logger().info(f"FW says: {msg}")
+        self.serial_parser.handle_payload(payload)
     
     def serial_read_timer_callback(self):
         if self.enable_serial and self.serialConn:
