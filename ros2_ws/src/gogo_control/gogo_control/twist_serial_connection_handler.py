@@ -220,6 +220,7 @@ class TwistSerialConnectionHandler:
             # Reject invalid lengths
             if payload_length > MAX_PAYLOAD_LENGTH:
                 # drop first byte and resync
+                self._log_warn("SerialConn failed to parse frame: corrupt length")
                 self._rx_buffer.pop(0)
                 continue
 
@@ -238,7 +239,8 @@ class TwistSerialConnectionHandler:
 
             # Validate checksum and ETX
             if self._calculate_xor_checksum(payload) != checksum or etx != ETX:
-                 # drop first byte and resync
+                # drop first byte and resync
+                self._log_warn("SerialConn failed to parse frame: corrupt checksum or etx")
                 self._rx_buffer.pop(0)
                 continue
             
