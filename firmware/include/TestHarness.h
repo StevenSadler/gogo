@@ -1,15 +1,15 @@
 #pragma once
 #include <Arduino.h>
 #include "MotorController.h"
-#include "ISafePrinter.h"
+#include "StructuredTelemetry.h"
 
 // ----------------------
 // TEST HARNESS
 // ----------------------
 class TestHarness {
 public:
-    TestHarness(MotorController& mc, ISafePrinter& safePrinter)
-        : motors(mc), printer(safePrinter)
+    TestHarness(MotorController& mc, StructuredTelemetry& telemetry)
+        : motors(mc), telemetry(telemetry)
     {}
 
     // Call when entering TEST mode
@@ -21,8 +21,8 @@ public:
 
         // Ensure motors start from zero
         motors.setTarget(0, 0);
-
-        printer.commit("TestHarness started");
+        telemetry.sendLog(SubID::INFO_GENERAL, 
+            MessageBuilder::build(FrameID::LOG, "TestHarness started"));
     }
 
     // Call every loop with current millis()
@@ -40,18 +40,19 @@ public:
                     motors.setTarget(leftSpeeds[stepIndex],
                                      rightSpeeds[stepIndex]);
 
-                    printer.print("Holding speed: ");
-                    printer.print(leftSpeeds[stepIndex]);
-                    printer.print(", ");
-                    printer.commit(rightSpeeds[stepIndex]);
+                    telemetry.sendLog(SubID::INFO_GENERAL, 
+                        MessageBuilder::build(FrameID::LOG, "Holding speed: %d, %d",
+                        leftSpeeds[stepIndex], rightSpeeds[stepIndex]));
+
 
                     inStopSegment = false;
                     segmentStart  = now;
                 } else {
                     // End of test: force motors fully stopped
                     motors.setTarget(0, 0);
+                    telemetry.sendLog(SubID::INFO_GENERAL, 
+                        MessageBuilder::build(FrameID::LOG, "Test complete, motors stopped."));
 
-                    printer.commit("Test complete, motors stopped.");
                     running = false;
                 }
             } else {
@@ -64,8 +65,8 @@ public:
         else {
             if (segmentElapsed >= HOLD_MS) {
                 motors.setTarget(0, 0);
-
-                printer.commit("Stopping between speeds");
+                telemetry.sendLog(SubID::INFO_GENERAL, 
+                    MessageBuilder::build(FrameID::LOG, "Stopping between speeds"));
 
                 inStopSegment = true;
                 segmentStart  = now;
@@ -79,7 +80,7 @@ public:
 
 private:
     MotorController& motors;
-    ISafePrinter& printer;
+    StructuredTelemetry& telemetry;
 
     // state
     bool running;

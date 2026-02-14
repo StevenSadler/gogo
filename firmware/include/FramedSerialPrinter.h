@@ -11,6 +11,8 @@ public:
     // Make base overloads visible
     using ISafePrinter::commit;
 
+    static constexpr uint8_t MAX_PAYLOAD = 31;
+
     // -----------------------------
     // Core write: buffer one byte
     // -----------------------------
@@ -58,7 +60,6 @@ private:
 
     static constexpr uint8_t STX = 0xAA;
     static constexpr uint8_t ETX = 0x55;
-    static constexpr uint8_t MAX_PAYLOAD = 31;
 
     uint8_t buffer[MAX_PAYLOAD];
     uint8_t length;
