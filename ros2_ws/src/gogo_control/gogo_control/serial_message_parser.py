@@ -7,8 +7,9 @@ class SerialMessageParser:
     logs them via the provided logger.
     """
 
-    def __init__(self, logger):
+    def __init__(self, logger, encoder_callback):
         self.logger = logger
+        self.encoder_callback = encoder_callback
         # cache structured frame IDs for efficiency
         self.structured_ids = {fid.value for fid in FrameID}
 
@@ -48,7 +49,8 @@ class SerialMessageParser:
         elif frame_enum == FrameID.ENCODER_FEED:
             left = data.get("left_ticks")
             right = data.get("right_ticks")
-            self.logger.debug(f"[FW ENC] L:{left} R:{right}")
+            timestamp = data.get("timestamp_ms")
+            self.encoder_callback(left, right, timestamp)
 
         elif frame_enum == FrameID.ERROR:
             code = data.get("error_code")

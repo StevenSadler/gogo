@@ -72,10 +72,11 @@ public:
     // ------------------------------
     // ENCODER FEED
     // ------------------------------
-    void sendEncoder(int32_t left_ticks, int32_t right_ticks) {
+    void sendEncoder(int32_t left_ticks, int32_t right_ticks, uint32_t timestamp_ms) {
         begin(FrameID::ENCODER_FEED);
         writeInt32(left_ticks);
         writeInt32(right_ticks);
+        writeUInt32(timestamp_ms);
         commit();
     }
 
@@ -134,6 +135,13 @@ private:
     }
 
     void writeInt32(int32_t value) {
+        printer.write((uint8_t)(value & 0xFF));
+        printer.write((uint8_t)((value >> 8) & 0xFF));
+        printer.write((uint8_t)((value >> 16) & 0xFF));
+        printer.write((uint8_t)((value >> 24) & 0xFF));
+    }
+
+    void writeUInt32(uint32_t value) {
         printer.write((uint8_t)(value & 0xFF));
         printer.write((uint8_t)((value >> 8) & 0xFF));
         printer.write((uint8_t)((value >> 16) & 0xFF));

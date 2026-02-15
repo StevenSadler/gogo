@@ -105,6 +105,15 @@ public:
     }
 
     // ----------------------
+    // READ ENCODERS
+    // ----------------------
+    void readEncoders(EncoderCounts& counts) {
+        counts.timestamp_ms = millis();
+        counts.leftTicks = roboclaw.ReadEncM1(ROBOCLAW_ADDRESS);
+        counts.rightTicks = roboclaw.ReadEncM2(ROBOCLAW_ADDRESS);
+    }
+
+    // ----------------------
     // SAFE ROBOCLAW PROBE
     // ----------------------
     bool probe() {

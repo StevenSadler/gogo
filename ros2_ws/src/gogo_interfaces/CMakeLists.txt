@@ -13,6 +13,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/IntStamped.msg"
   "msg/MotorCommand.msg"
   "msg/ModeSelect.msg"
+  "msg/EncoderFeedback.msg"
   DEPENDENCIES std_msgs
 )
 
