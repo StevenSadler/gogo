@@ -53,7 +53,22 @@ class SerialMessageParser:
         elif frame_enum == FrameID.ERROR:
             code = data.get("error_code")
             msg = data.get("message", "")
-            self.logger.error(f"[FW ERROR {code}] {msg}")
+
+            try:
+                error_enum = SubID(code)
+            except ValueError:
+                error_enum = None
+
+
+            if error_enum == SubID.WATCHDOG_EXPIRED:
+                self.logger.error(f"[FW ERROR Watchdog expired] {msg}")
+            elif error_enum == SubID.UNKNOWN_COMMAND:
+                self.logger.error(f"[FW ERROR Unknown command] {msg}")
+            elif error_enum == SubID.MOTOR_FAULT:
+                self.logger.error(f"[FW ERROR Motor fault] {msg}")
+            else:
+                self.logger.error(f"parser error ERROR code {code}")
+                # self.logger.warn(f"[FW ERROR {code}] event: {msg}")
 
         elif frame_enum == FrameID.MODE_ACK:
             mode = data.get("mode")
@@ -67,25 +82,28 @@ class SerialMessageParser:
 
         elif frame_enum == FrameID.STATUS_EVENT:
             event = data.get("event")
-            if event == SubID.WATCHDOG_EXPIRED:
-                self.logger.warn("[FW STATUS] Watchdog expired")
+            if event == SubID.MOTOR_CLAMP_APPLIED:
+                self.logger.warn("[FW STATUS] Motor clamp applied")
             elif event == SubID.ROBOCLAW_CONNECTED:
                 self.logger.warn("[FW STATUS] Roboclaw connected")
+            elif event == SubID.ROBOCLAW_LOST:
+                self.logger.warn("[FW STATUS] Roboclaw lost")
             else:
                 self.logger.warn(f"[FW STATUS] event: {event}")
         
         elif frame_enum == FrameID.LOG:
-            sub_id = data.get("sub_id")
+            severity = data.get("severity")
             msg = data.get("message", "")
 
-            if sub_id == SubID.INFO_GENERAL:
+            if severity == SubID.INFO_GENERAL:
                 self.logger.info(f"[FW] {msg}")
-            elif sub_id == SubID.WARN_GENERAL:
+            elif severity == SubID.WARN_GENERAL:
                 self.logger.warn(f"[FW] {msg}")
-            elif sub_id == SubID.ERROR_GENERAL:
+            elif severity == SubID.ERROR_GENERAL:
                 self.logger.error(f"[FW] {msg}")
             else:
-                self.logger.info(f"[FW] {msg}")  # safe fallback
+                self.logger.error(f"parser error LOG severity {severity}")
+                # self.logger.info(f"[FW] {msg}")  # safe fallback
 
 
     # --------------------------

@@ -96,7 +96,7 @@ void handleSerialCommand(const char* cmd) {
 
     // Unknown command
     telemetry.sendError(SubID::UNKNOWN_COMMAND, 
-        MessageBuilder::build(FrameID::ERROR, "Unknown command: %s", cmd));
+        MessageBuilder::build(FrameID::ERROR, cmd));
 }
 
 void setup() {
@@ -149,7 +149,7 @@ void loop() {
     if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
         if (!watchdogExpiryNoted) {
             motors.setTarget(0,0);
-            telemetry.sendStatusEvent(SubID::WATCHDOG_EXPIRED);
+            telemetry.sendError(SubID::WATCHDOG_EXPIRED, "blah");
             watchdogExpiryNoted = true;
         }
     } else {
