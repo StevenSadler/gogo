@@ -5,47 +5,10 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 from gogo_interfaces.msg import MotorCommand, ModeSelect, EncoderFeedback
-from gogo_control.twist_serial_connection_handler import TwistSerialConnectionHandler
-from gogo_control.serial_message_parser import SerialMessageParser
-from threading import Thread, Lock, Timer
-from queue import Queue
+from gogo_control.hardware.watchdog import Watchdog
+from gogo_control.hardware.serial_manager import SerialManager
+from gogo_control.kinematics.diff_drive import DiffDriveKinematics
 from math import pi
-import time
-
-
-class Watchdog:
-    """Threaded watchdog that calls a callback if not kicked in time."""
-
-    def __init__(self, timeout_sec: float, expired_callback):
-        self.timeout_sec = timeout_sec
-        self.expired_callback = expired_callback
-        self._lock = Lock()
-        self._timer = None
-        self._active = True
-        self.kick()  # start immediately
-
-    def _timer_callback(self):
-        with self._lock:
-            if self._active:
-                self.expired_callback()
-
-    def kick(self):
-        """Reset the watchdog timer."""
-        with self._lock:
-            if self._timer:
-                self._timer.cancel()
-            if self._active:
-                self._timer = Timer(self.timeout_sec, self._timer_callback)
-                self._timer.start()
-
-    def cancel(self):
-        """Stop the watchdog completely."""
-        with self._lock:
-            self._active = False
-            if self._timer:
-                self._timer.cancel()
-                self._timer = None
-
 
 class TwistSerial(Node):
     def __init__(self):
@@ -95,6 +58,13 @@ class TwistSerial(Node):
         self.baudrate = self.get_parameter("baudrate").get_parameter_value().integer_value
         self.enable_serial = self.get_parameter("enable_serial").get_parameter_value().bool_value
 
+        self.kinematics = DiffDriveKinematics(
+            wheel_separation=self.wheel_separation,
+            wheel_radius=self.wheel_radius,
+            encoder_cpr=self.encoder_cpr,
+            max_tps=self.max_tps,
+        )
+
         self.ticks_per_meter = self.encoder_cpr / (2 * pi * self.wheel_radius)
 
         self.get_logger().warn(
@@ -110,41 +80,23 @@ class TwistSerial(Node):
         self.watchdog_expired = False
         self.create_timer(0.05, self.watchdog_action)
 
-        # Serial connection
-        if self.enable_serial:
-            self.serialConn = TwistSerialConnectionHandler(
-                port=self.arduino_port,
-                baudrate=self.baudrate,
-                reconnect_period_sec=1.0,
-                logger=self.get_logger(),
-                frame_callback=self.handle_serial_frame,
-            )
-            self.create_timer(0.02, self.serial_read_timer_callback)  # 50Hz to match
-            self.create_timer(0.5, self.serial_reconnect_timer_callback)
-        else:
-            self.serialConn = None
-
-        # Serial message parser
-        self.serial_parser = SerialMessageParser(self.get_logger(), self.encoder_callback)
-        
+        # Serial manager
+        self.serial_manager = SerialManager(
+            port=self.arduino_port,
+            baudrate=self.baudrate,
+            logger=self.get_logger(),
+            encoder_callback=self.encoder_callback,
+        )
+        # Timers for reading and reconnecting
+        self.create_timer(0.02, self.serial_manager.read_available_bytes)
+        self.create_timer(0.5, self.serial_manager.periodic_reconnect)
 
         # Logging throttling
         self.last_tx_log_time = 0.0
         self.tx_log_period_sec = 0.1
 
         self.get_logger().info(
-            f"TwistSerial node initialized: watchdog {self.cmd_timeout_sec*1000:.1f} ms, "
-            f"serial={'enabled' if self.enable_serial else 'disabled'}"
-        )
-    
-    def send_to_serial(self, cmd: str):
-        # Send command string to Arduino
-        if self.enable_serial and self.serialConn and self.serialConn.serial:
-            self.serialConn.write_cmd(cmd)
-    
-    def send_motor_cmd_to_serial(self, left: int, right: int):
-        self.send_to_serial(f"{left},{right}")
-
+            f"TwistSerial node initialized: watchdog {self.cmd_timeout_sec*1000:.1f} ms")
 
     # --------------------------
     # ROS CALLBACKS
@@ -159,17 +111,12 @@ class TwistSerial(Node):
     def twist_callback(self, msg: Twist):
         v = msg.linear.x
         w = msg.angular.z
-        self.get_logger().debug(f"twist_callback HIT - mode='{self.current_mode}' raw twist: v={v:.3f}, w={w:.3f}")
 
         # Reset watchdog timer
         self.watchdog.kick()
 
         # Convert Twist to wheel TPS
-        left_tps, right_tps = self.twist_to_tps(msg)
-
-        self.get_logger().debug(
-            f"TPS: L={left_tps} R={right_tps} v={v:.3f} m/s, w={w:.3f} rad/s)"
-        )
+        left_tps, right_tps = self.kinematics.twist_to_tps(v, w)
 
         # Publish for ROS visibility/debug
         cmd = MotorCommand()
@@ -182,55 +129,18 @@ class TwistSerial(Node):
         if self.current_mode != "MODE_DRIVE":
             self.get_logger().warn(f"Skipping send: current_mode='{self.current_mode}'")
             return
-        
-        self.get_logger().debug(f"Sending to Arduino: L={left_tps}, R={right_tps}")
 
         self.send_motor_cmd_to_serial(left_tps, right_tps)
 
     # --------------------------
     # HELPER FUNCTIONS
     # --------------------------
-    def twist_to_tps(self, msg: Twist):
-        v = msg.linear.x
-        w = msg.angular.z
-
-        # Differential drive kinematics - wheel velocities (m/s)
-        half_wL = w * self.wheel_separation / 2.0
-        v_left = v - half_wL
-        v_right = v + half_wL
-
-        # Convert to raw tps as floats
-        left_tps = v_left * self.ticks_per_meter
-        right_tps = v_right * self.ticks_per_meter
-
-        # Arc preserving proportional clamp
-        max_mag = max(abs(left_tps), abs(right_tps))
-        if max_mag > self.max_tps:
-            scale = self.max_tps / max_mag
-            left_tps *= scale
-            right_tps *= scale
-            self.get_logger().debug(
-                f"TSP scaled: scale={scale:.3f} -> L={left_tps:.1f}, R={right_tps:.1f}"
-            )
-
-        self.get_logger().debug(
-            f"twist_to_tps: v_left={v_left:.4f} m/s, v_right={v_right:.4f} m/s -> "
-            f"L={left_tps:.1f}, R={right_tps:.1f}"
-        )
-
-        return int(left_tps), int(right_tps)
+    def send_to_serial(self, cmd: str):
+        self.serial_manager.send_command(cmd)
     
-    def handle_serial_frame(self, payload:bytes):
-        self.serial_parser.handle_payload(payload)
-    
-    def serial_read_timer_callback(self):
-        if self.enable_serial and self.serialConn:
-            self.serialConn.read_available_bytes()
-    
-    def serial_reconnect_timer_callback(self):
-        if self.enable_serial and self.serialConn:
-            self.serialConn.periodic_reconnect()
-    
+    def send_motor_cmd_to_serial(self, left: int, right: int):
+        self.serial_manager.send_motor_command(left, right)
+
     def encoder_callback(self, left, right, timestamp):
         msg = EncoderFeedback()
         msg.left_ticks = left
@@ -238,7 +148,6 @@ class TwistSerial(Node):
         msg.timestamp_ms = timestamp
 
         self.enc_pub.publish(msg)
-
 
     # --------------------------
     # WATCHDOG & CLEANUP
@@ -264,13 +173,11 @@ class TwistSerial(Node):
 
         self.send_motor_cmd_to_serial(0, 0)
 
-
     def destroy_node(self):
         self.watchdog.cancel()
         if self.serialConn:
             self.serialConn.close()
         super().destroy_node()
-
 
 def main():
     rclpy.init()
