@@ -12,7 +12,8 @@ ControlMode mode;
 // ----------------------
 // CONFIG
 // ----------------------
-constexpr unsigned long LOOP_PERIOD_MS = 20;         // 50 Hz
+constexpr unsigned long CONTROL_PERIOD_MS = 20;      // 50 Hz
+constexpr unsigned long ODOM_PERIOD_MS = 50;         // 20 Hz
 constexpr unsigned long WATCHDOG_TIMEOUT_MS = 300;   // 0.3 s
 
 SerialManager serialMgr;
@@ -22,7 +23,8 @@ TestHarness testHarness(motors, telemetry);
 BuildInfo buildInfo(telemetry);
 
 bool watchdogExpiryNoted = false; // did watchdog just expire
-unsigned long lastLoopMs = 0;
+unsigned long lastControlMs = 0;
+unsigned long lastOdomMs = 0;
 unsigned long lastCommandMs = 0;  // last time a motor command was sent
 
 // ----------------------
@@ -96,7 +98,7 @@ void handleSerialCommand(const char* cmd) {
 
     // Unknown command
     telemetry.sendError(SubID::UNKNOWN_COMMAND, 
-        MessageBuilder::build(FrameID::ERROR, "Unknown command: %s", cmd));
+        MessageBuilder::build(FrameID::ERROR, cmd));
 }
 
 void setup() {
@@ -120,42 +122,54 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    if (now - lastLoopMs < LOOP_PERIOD_MS) {
-        return;
-    }
+    // ----------------------
+    // MOTOR CONTROL LOOP
+    // ----------------------
+    if (now - lastControlMs >= CONTROL_PERIOD_MS) {
+        lastControlMs += CONTROL_PERIOD_MS;
 
-    lastLoopMs += LOOP_PERIOD_MS;
+        // Handle incoming serial commands
+        serialMgr.handleSerial(handleSerialCommand);
 
-    // Handle incoming serial commands
-    serialMgr.handleSerial(handleSerialCommand);
+        // Update control depending on mode
+        switch (mode) {
+            case ControlMode::IDLE_MODE:
+                // Already stopped, no motor updates needed
+                break;
 
-    // Update control depending on mode
-    switch (mode) {
-        case ControlMode::IDLE_MODE:
-            // Already stopped, no motor updates needed
-            break;
+            case ControlMode::TEST_MODE:
+                kickWatchdog();            // simulate messages arriving
+                testHarness.update(now);   // run test commands
+                break;
 
-        case ControlMode::TEST_MODE:
-            kickWatchdog();            // simulate messages arriving
-            testHarness.update(now);   // run test commands
-            break;
-
-        case ControlMode::DRIVE_MODE:
-            // Motor commands already handled in handleSerialCommand
-            break;
-    }
-
-    // Watchdog check (applies to TEST and DRIVE only)
-    if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
-        if (!watchdogExpiryNoted) {
-            motors.setTarget(0,0);
-            telemetry.sendStatusEvent(SubID::WATCHDOG_EXPIRED);
-            watchdogExpiryNoted = true;
+            case ControlMode::DRIVE_MODE:
+                // Motor commands handled in handleSerialCommand
+                break;
         }
-    } else {
-        watchdogExpiryNoted = false;
+
+        // Watchdog check (applies to TEST and DRIVE only)
+        if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
+            if (!watchdogExpiryNoted) {
+                motors.setTarget(0,0);
+                telemetry.sendError(SubID::WATCHDOG_EXPIRED, nullptr);
+                watchdogExpiryNoted = true;
+            }
+        } else {
+            watchdogExpiryNoted = false;
+        }
+
+        // Update motor outputs (ramping and send to Roboclaw)
+        motors.update(now);
     }
 
-    // Update motor outputs (ramping and send to Roboclaw)
-    motors.update(now);
+    // ----------------------
+    // ODOM LOOP
+    // ----------------------
+    if (now - lastOdomMs >= ODOM_PERIOD_MS) {
+        lastOdomMs += ODOM_PERIOD_MS;
+
+        EncoderCounts counts;
+        motors.readEncoders(counts);
+        telemetry.sendEncoder(counts.leftTicks, counts.rightTicks, counts.timestamp_ms);
+    }
 }

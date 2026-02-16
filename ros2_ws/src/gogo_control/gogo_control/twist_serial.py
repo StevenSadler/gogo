@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
-from gogo_interfaces.msg import MotorCommand, ModeSelect
+from gogo_interfaces.msg import MotorCommand, ModeSelect, EncoderFeedback
 from gogo_control.twist_serial_connection_handler import TwistSerialConnectionHandler
 from gogo_control.serial_message_parser import SerialMessageParser
 from threading import Thread, Lock, Timer
@@ -61,6 +61,12 @@ class TwistSerial(Node):
             depth=10,
             reliability=QoSReliabilityPolicy.RELIABLE
         )
+        # use this for encoders, imu, lidar
+        sensor_qos = QoSProfile(
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=QoSReliabilityPolicy.BEST_EFFORT
+        )
 
         self.current_mode = "MODE_IDLE"
 
@@ -68,6 +74,7 @@ class TwistSerial(Node):
         self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, cmd_vel_qos)
         self.mode_sub = self.create_subscription(ModeSelect, "mode_select", self.mode_callback, mode_select_qos)
         self.pub = self.create_publisher(MotorCommand, "motor_command", cmd_vel_qos)
+        self.enc_pub = self.create_publisher(EncoderFeedback, "encoders", sensor_qos)
 
         # Parameters
         self.declare_parameter("min_tps", 0)
@@ -118,7 +125,7 @@ class TwistSerial(Node):
             self.serialConn = None
 
         # Serial message parser
-        self.serial_parser = SerialMessageParser(self.get_logger())
+        self.serial_parser = SerialMessageParser(self.get_logger(), self.encoder_callback)
         
 
         # Logging throttling
@@ -223,6 +230,15 @@ class TwistSerial(Node):
     def serial_reconnect_timer_callback(self):
         if self.enable_serial and self.serialConn:
             self.serialConn.periodic_reconnect()
+    
+    def encoder_callback(self, left, right, timestamp):
+        msg = EncoderFeedback()
+        msg.left_ticks = left
+        msg.right_ticks = right
+        msg.timestamp_ms = timestamp
+
+        self.enc_pub.publish(msg)
+
 
     # --------------------------
     # WATCHDOG & CLEANUP

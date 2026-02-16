@@ -231,7 +231,7 @@ class TwistSerialConnectionHandler:
                 break
 
             # Extract payload, checksum, ETX
-            payload_start = start_idx + STX_SIZE + LEN_SIZE
+            payload_start = STX_SIZE + LEN_SIZE
             payload_end = payload_start + payload_length
             payload = self._rx_buffer[payload_start:payload_end]
             checksum = self._rx_buffer[payload_end]

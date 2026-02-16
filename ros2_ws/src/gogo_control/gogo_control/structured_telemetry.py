@@ -78,9 +78,10 @@ def decode_structured_payload(payload: bytes):
             result["right_tps"] = int.from_bytes(data[2:4], "little", signed=True)
 
     elif frame_enum == FrameID.ENCODER_FEED:
-        if len(data) >= 8:
+        if len(data) >= 12:
             result["left_ticks"] = int.from_bytes(data[0:4], "little", signed=True)
             result["right_ticks"] = int.from_bytes(data[4:8], "little", signed=True)
+            result["timestamp_ms"] = int.from_bytes(data[8:12], "little", signed=False)
 
     elif frame_enum == FrameID.ERROR:
         if len(data) >= 1:
