@@ -175,8 +175,7 @@ class TwistSerial(Node):
 
     def destroy_node(self):
         self.watchdog.cancel()
-        if self.serialConn:
-            self.serialConn.close()
+        self.serial_manager.close()
         super().destroy_node()
 
 def main():
