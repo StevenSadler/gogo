@@ -256,8 +256,3 @@ class TwistSerialConnectionHandler:
             if byte == STX:
                 return i
         return None
-    
-
-
-
-

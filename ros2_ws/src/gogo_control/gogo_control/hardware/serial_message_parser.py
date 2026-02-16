@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from gogo_control.structured_telemetry import FrameID, SubID, LogSeverity, decode_structured_payload
+from gogo_control.hardware.structured_telemetry import FrameID, SubID, LogSeverity, decode_structured_payload
 
 class SerialMessageParser:
     """
