@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    wheel_radius: 0.038
+    wheel_separation: 0.278
+    encoder_cpr: 4741.34
+    min_tps: 0
+    max_tps: 2000
+    arduino_port: "/dev/ttyACM0"
+    baudrate: 38400
