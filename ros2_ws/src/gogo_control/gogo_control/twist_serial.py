@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from math import pi
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
@@ -8,45 +9,41 @@ from gogo_interfaces.msg import MotorCommand, ModeSelect, EncoderFeedback
 from gogo_control.hardware.watchdog import Watchdog
 from gogo_control.hardware.serial_manager import SerialManager
 from gogo_control.kinematics.diff_drive import DiffDriveKinematics
-from math import pi
+from gogo_description.qos_profiles import (
+    CMD_VEL_QOS, 
+    MODE_SELECT_QOS, 
+    SENSOR_QOS
+)
+from gogo_description.robot_constants import (
+    WHEEL_RADIUS,
+    WHEEL_SEPARATION,
+    ENCODER_CPR,
+    MIN_TPS,
+    MAX_TPS,
+    BAUDRATE,
+    DEFAULT_PORT
+)
 
 class TwistSerial(Node):
     def __init__(self):
         super().__init__("twist_serial")
 
-        cmd_vel_qos = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=QoSReliabilityPolicy.BEST_EFFORT
-        )
-        mode_select_qos = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10,
-            reliability=QoSReliabilityPolicy.RELIABLE
-        )
-        # use this for encoders, imu, lidar
-        sensor_qos = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10,
-            reliability=QoSReliabilityPolicy.BEST_EFFORT
-        )
-
         self.current_mode = "MODE_IDLE"
 
         # ROS subscriptions and publishers
-        self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, cmd_vel_qos)
-        self.mode_sub = self.create_subscription(ModeSelect, "mode_select", self.mode_callback, mode_select_qos)
-        self.pub = self.create_publisher(MotorCommand, "motor_command", cmd_vel_qos)
-        self.enc_pub = self.create_publisher(EncoderFeedback, "encoders", sensor_qos)
+        self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, CMD_VEL_QOS)
+        self.mode_sub = self.create_subscription(ModeSelect, "mode_select", self.mode_callback, MODE_SELECT_QOS)
+        self.pub = self.create_publisher(MotorCommand, "motor_command", CMD_VEL_QOS)
+        self.enc_pub = self.create_publisher(EncoderFeedback, "encoders", SENSOR_QOS)
 
         # Parameters
-        self.declare_parameter("min_tps", 0)
-        self.declare_parameter("max_tps", 2000)
-        self.declare_parameter("wheel_radius", 0.038)
-        self.declare_parameter("wheel_separation", 0.278)
-        self.declare_parameter("encoder_cpr", 4741.34)
-        self.declare_parameter("arduino_port", "/dev/ttyACM0")
-        self.declare_parameter("baudrate", 38400)
+        self.declare_parameter("min_tps", MIN_TPS)
+        self.declare_parameter("max_tps", MAX_TPS)
+        self.declare_parameter("wheel_radius", WHEEL_RADIUS)
+        self.declare_parameter("wheel_separation", WHEEL_SEPARATION)
+        self.declare_parameter("encoder_cpr", ENCODER_CPR)
+        self.declare_parameter("arduino_port", DEFAULT_PORT)
+        self.declare_parameter("baudrate", BAUDRATE)
         self.declare_parameter("enable_serial", True)
 
         self.min_tps = self.get_parameter("min_tps").get_parameter_value().integer_value
@@ -86,6 +83,7 @@ class TwistSerial(Node):
             baudrate=self.baudrate,
             logger=self.get_logger(),
             encoder_callback=self.encoder_callback,
+            enable_serial=self.enable_serial
         )
         # Timers for reading and reconnecting
         self.create_timer(0.02, self.serial_manager.read_available_bytes)
