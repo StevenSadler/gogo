@@ -4,6 +4,7 @@ from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 
+
 def generate_launch_description():
     config_arg = DeclareLaunchArgument(
         'config',
@@ -16,12 +17,21 @@ def generate_launch_description():
         LaunchConfiguration('config')
     ])
 
+    # Joystick device path
+    # Default is set for Pi; on VM override with device:=/dev/input/js2
+    device_arg = DeclareLaunchArgument(
+        'device',
+        default_value='/dev/input/js0',  # Pi default
+        description='Joystick device path (override for VM if needed)'
+    )
+    device_path = LaunchConfiguration('device')
+
     joy_node = Node(
             package='joy',
             executable='joy_node',
             name='joy_node',
             output='screen',
-            parameters=[{'dev': '/dev/input/js2'}]
+            parameters=[{'dev': device_path}]
         )
     
     xbox_twist_node = Node(
@@ -34,6 +44,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         config_arg,
+        device_arg,
         joy_node,
         xbox_twist_node
     ])
