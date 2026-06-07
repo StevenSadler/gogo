@@ -2,10 +2,11 @@
 
 import math
 import rclpy
+import tf2_ros
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import Quaternion, TransformStamped
 from gogo_interfaces.msg import EncoderFeedback
 from gogo_description.frames import ODOM_FRAME, BASE_LINK_FRAME
 from gogo_description.robot_constants import WHEEL_RADIUS, WHEEL_SEPARATION, ENCODER_CPR
@@ -31,6 +32,8 @@ class OdometryNode(Node):
         self.encoder_cpr = self.get_parameter("encoder_cpr").get_parameter_value().double_value
 
         self.ticks_per_meter = self.encoder_cpr / (2 * math.pi * self.wheel_radius)
+
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
         # Initialize state
         self.x = 0.0
@@ -106,7 +109,27 @@ class OdometryNode(Node):
 
         # Publish
         self.odom_pub.publish(odom_msg)
-        self.get_logger().info("Published odometry message")
+        self.publish_tf(msg)
+    
+    def publish_tf(self, msg: EncoderFeedback):
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = ODOM_FRAME
+        t.child_frame_id = BASE_LINK_FRAME
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+
+        qz = math.sin(self.theta / 2.0)
+        qw = math.cos(self.theta / 2.0)
+
+        t.transform.rotation.x = 0.0
+        t.transform.rotation.y = 0.0
+        t.transform.rotation.z = qz
+        t.transform.rotation.w = qw
+        self.tf_broadcaster.sendTransform(t)
+
 
 def main(args=None):
     rclpy.init(args=args)
