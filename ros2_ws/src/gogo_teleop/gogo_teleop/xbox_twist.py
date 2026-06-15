@@ -33,8 +33,8 @@ class XboxTwist(Node):
         self.declare_parameter('enable_button', 4)  # LB
         self.declare_parameter('axis_linear_x', 1)  # left stick vertical
         self.declare_parameter('axis_angular_z', 3) # right stick horizontal
-        self.declare_parameter('scale_linear', 0.05)
-        self.declare_parameter('scale_angular', 0.36)
+        self.declare_parameter('scale_linear', 0.10)
+        self.declare_parameter('scale_angular', 0.72)
 
         self.enable_button = self.get_parameter('enable_button').value
         self.axis_linear = self.get_parameter('axis_linear_x').value
