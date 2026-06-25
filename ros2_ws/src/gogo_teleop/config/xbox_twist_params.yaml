@@ -3,8 +3,21 @@ xbox_twist:
     enable_button: 4          # LB button
     axis_linear_x: 1          # left stick vertical
     axis_angular_z: 3         # right stick horizontal
-    scale_linear: 0.10
-    scale_angular: 0.72
+
+    # Maximum teleop velocities
+    scale_linear: 0.10        # m/s
+    scale_angular: 0.72       # rad/s
+
+    # Turning ratio:
+    # scale_angular / scale_linear ~= 7.2
+    # 7.2 ~= 2 / wheel_separation
+    # wheel_separation = 0.278 m
+    #
+    # Full forward + full turn:
+    #   inner wheel ~= 0
+    #   outer wheel ~= 2x forward speed
+    #
+    # This is a teleop behavior choice, not a software requirement.
 
     # Mode buttons
     mode_idle_button: 0       # A
