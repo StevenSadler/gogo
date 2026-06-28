@@ -1,5 +1,18 @@
 slam_toolbox:
   ros__parameters:
+    # IMPORTANT:
+    # This file alone does NOT control runtime behavior.
+    # You MUST also pass:
+    #   use_sim_time:=false
+    # when launching slam_toolbox.
+    #
+    # Example:
+    # ros2 launch slam_toolbox online_async_launch.py \
+    #   slam_params_file:=.../gogo_slam.yaml \
+    #   use_sim_time:=false
+    #
+    # Reason:
+    # launch argument overrides YAML for use_sim_time.  
 
     # Plugin params
     solver_plugin: solver_plugins::CeresSolver
@@ -14,6 +27,7 @@ slam_toolbox:
     map_frame: map
     base_frame: base_link
     scan_topic: /scan
+    use_sim_time: false # see comment above regarding this being overriden by default parameter true
     use_map_saver: true
     mode: mapping #localization
 
