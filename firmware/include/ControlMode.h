@@ -4,5 +4,6 @@
 enum class ControlMode : uint8_t {
     IDLE_MODE,
     TEST_MODE,
-    DRIVE_MODE
+    DRIVE_MODE,
+    AUTO_MODE,
 };

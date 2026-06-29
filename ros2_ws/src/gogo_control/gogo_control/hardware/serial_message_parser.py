@@ -77,7 +77,8 @@ class SerialMessageParser:
             mode_names = {
                 0: "IDLE",
                 1: "TEST",
-                2: "DRIVE"
+                2: "DRIVE",
+                3: "AUTO"
             }
             name = mode_names.get(mode, f"UNKNOWN({mode})")
             self.logger.info(f"[FW MODE_ACK] Mode={name}")
