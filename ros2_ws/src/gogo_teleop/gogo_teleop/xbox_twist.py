@@ -46,10 +46,12 @@ class XboxTwist(Node):
         self.declare_parameter('mode_idle_button', 0)
         self.declare_parameter('mode_test_button', 1)
         self.declare_parameter('mode_drive_button', 2)
+        self.declare_parameter('mode_auto_button', 3)
 
         self.mode_idle_button = self.get_parameter('mode_idle_button').value
         self.mode_test_button = self.get_parameter('mode_test_button').value
         self.mode_drive_button = self.get_parameter('mode_drive_button').value
+        self.mode_auto_button = self.get_parameter('mode_auto_button').value
 
         # For edge detection
         self.prev_enable = False
@@ -60,7 +62,8 @@ class XboxTwist(Node):
         self.mode_buttons = [
             ("MODE_IDLE", self.mode_idle_button),
             ("MODE_TEST", self.mode_test_button),
-            ("MODE_DRIVE", self.mode_drive_button)
+            ("MODE_DRIVE", self.mode_drive_button),
+            ("MODE_AUTO", self.mode_auto_button)
         ]
 
         self.get_logger().warn(f"PARAMS: scale_linear={self.scale_linear}, scale_angular={self.scale_angular}")

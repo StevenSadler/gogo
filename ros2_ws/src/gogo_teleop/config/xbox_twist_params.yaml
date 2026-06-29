@@ -23,3 +23,4 @@ xbox_twist:
     mode_idle_button: 0       # A
     mode_test_button: 1       # B
     mode_drive_button: 2      # X
+    mode_auto_button: 3       # Y

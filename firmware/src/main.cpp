@@ -49,6 +49,13 @@ void enterDrive() {
     telemetry.sendModeAck(mode);
 }
 
+void enterAuto() {
+    // for now, duplicate DRIVE mode behavior
+    mode = ControlMode::AUTO_MODE;
+    motors.setTarget(0, 0);   // immediately stop motors
+    telemetry.sendModeAck(mode);
+}
+
 const char* modeToString(ControlMode m) {
     switch (m) {
         case ControlMode::IDLE_MODE:
@@ -57,6 +64,8 @@ const char* modeToString(ControlMode m) {
             return "MODE_TEST";
         case ControlMode::DRIVE_MODE:
             return "MODE_DRIVE";
+        case ControlMode::AUTO_MODE:
+            return "MODE_AUTO";
         default:
             return "UNKNOWN";
     }
@@ -85,6 +94,10 @@ void handleSerialCommand(const char* cmd) {
     }
     if (strcmp(cmd, "MODE_DRIVE") == 0) {
         enterDrive();
+        return;
+    }
+    if (strcmp(cmd, "MODE_AUTO") == 0) {
+        enterAuto();
         return;
     }
 
@@ -145,10 +158,14 @@ void loop() {
             case ControlMode::DRIVE_MODE:
                 // Motor commands handled in handleSerialCommand
                 break;
+            
+            case ControlMode::AUTO_MODE:
+                // Motor commands handled in handleSerialCommand
+                break;
         }
 
-        // Watchdog check (applies to TEST and DRIVE only)
-        if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE) && watchdogExpired()) {
+        // Watchdog check (applies to TEST, DRIVE, and AUTO only)
+        if ((mode == ControlMode::TEST_MODE || mode == ControlMode::DRIVE_MODE || mode == ControlMode::AUTO_MODE) && watchdogExpired()) {
             if (!watchdogExpiryNoted) {
                 motors.setTarget(0,0);
                 telemetry.sendError(SubID::WATCHDOG_EXPIRED, nullptr);

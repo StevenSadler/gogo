@@ -124,7 +124,7 @@ class TwistSerial(Node):
         self.pub.publish(cmd)
 
         # TODO: look into if this is necessary or just to force safety in IDLE and TEST
-        if self.current_mode != "MODE_DRIVE":
+        if self.current_mode == "MODE_IDLE" or self.current_mode == "MODE_TEST":
             self.get_logger().warn(f"Skipping send: current_mode='{self.current_mode}'")
             return
 
