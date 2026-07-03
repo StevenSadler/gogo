@@ -1,5 +1,7 @@
 #pragma once
 
+#include "generated/contract.h"
+
 #include <Arduino.h>
 #include <SoftwareSerial.h>
 #include <Basicmicro.h>
@@ -16,9 +18,8 @@ public:
     // ----------------------
     // CONSTRUCTOR
     // ----------------------
-    MotorController(int minCmd, int maxCmd, StructuredTelemetry& telemetry)
-        : CMD_MIN(minCmd), CMD_MAX(maxCmd),
-          leftTarget(0), rightTarget(0),
+    MotorController(StructuredTelemetry& telemetry)
+        : leftTarget(0), rightTarget(0),
           leftCurrent(0), rightCurrent(0),
           lastLeftTarget(0), lastRightTarget(0),
           clampActive(false),
@@ -81,8 +82,8 @@ public:
         // Scale both deltas proportionally to preserve arc
         int maxDelta = max(abs(deltaLeft), abs(deltaRight));
         float scale = 1.0f;
-        if (maxDelta > MAX_ACCEL) {
-            scale = float(MAX_ACCEL) / float(maxDelta);
+        if (maxDelta > MAX_ACCEL_PER_CYCLE) {
+            scale = float(MAX_ACCEL_PER_CYCLE) / float(maxDelta);
         }
 
         leftCurrent += int(deltaLeft * scale);
@@ -144,8 +145,6 @@ public:
     }
 
 private:
-    const int CMD_MIN;
-    const int CMD_MAX;
     const uint8_t ROBOCLAW_ADDRESS = 0x80;
 
     int leftTarget;
@@ -157,7 +156,7 @@ private:
 
     bool clampActive;
 
-    static constexpr int MAX_ACCEL = 150;
+    static constexpr int MAX_ACCEL_PER_CYCLE = MAX_ACCEL_TPS_PER_SECOND * CONTROL_PERIOD_MS / 1000;
     static constexpr int MIN_STEADY_SPEED = 0;
 
     SoftwareSerial roboclawSerial{10, 11};

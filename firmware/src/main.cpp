@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "generated/contract.h"
 #include "BuildInfo.h"
 #include "MotorController.h"
 #include "SerialManager.h"
@@ -12,13 +13,11 @@ ControlMode mode;
 // ----------------------
 // CONFIG
 // ----------------------
-constexpr unsigned long CONTROL_PERIOD_MS = 20;      // 50 Hz
-constexpr unsigned long ODOM_PERIOD_MS = 50;         // 20 Hz
 constexpr unsigned long WATCHDOG_TIMEOUT_MS = 300;   // 0.3 s
 
 SerialManager serialMgr;
 StructuredTelemetry telemetry(Serial);
-MotorController motors(-2000, 2000, telemetry); // min, max
+MotorController motors(telemetry);
 TestHarness testHarness(motors, telemetry);
 BuildInfo buildInfo(telemetry);
 
@@ -120,6 +119,10 @@ void setup() {
     delay(100);
     telemetry.sendLog(SubID::INFO_GENERAL, 
         MessageBuilder::build(FrameID::LOG, "Firmware alive"));
+    
+    // adding this to test proof of concept
+    telemetry.sendLog(SubID::INFO_GENERAL,
+        MessageBuilder::build(FrameID::LOG, "Contract Hash: %s", CONTRACT_HASH));
 
     motors.begin();
     telemetry.sendLog(SubID::INFO_GENERAL, 
