@@ -3,13 +3,12 @@ Import("env")  # type: ignore
 import sys
 import hashlib
 import json
-import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 from SCons.Script import COMMAND_LINE_TARGETS  # type: ignore
 
 def log(msg):
-    print(f"[extra_post] {msg}")
+    print(f"[extra_pre] {msg}")
 
 def is_real_build():
     return any(t in ("build", "upload", "program") for t in COMMAND_LINE_TARGETS)
@@ -31,6 +30,7 @@ else:
     # Paths
     # ----------------------------------------------------------------------
     PROJECT_DIR = Path(env["PROJECT_DIR"])  # type: ignore
+    CONTRACT_PATH = PROJECT_DIR / "config" / "contract" / "control_contract.json"
     SRC_DIR = PROJECT_DIR / "src"
     INCLUDE_DIR = PROJECT_DIR / "include"
     GENERATED_DIR = PROJECT_DIR / "include/generated"
@@ -43,6 +43,23 @@ else:
     BUILD_LOG_DIR.mkdir(parents=True, exist_ok=True)
     log(f"Generated headers dir: {GENERATED_HEADER_DIR}")
 
+    # ----------------------------------------------------------------------
+    # Load control contract
+    # ----------------------------------------------------------------------
+    log(f"Loading contract: {CONTRACT_PATH}")
+
+    if not CONTRACT_PATH.exists():
+        raise FileNotFoundError(f"Contract not found: {CONTRACT_PATH}")
+
+    contract_raw = json.loads(CONTRACT_PATH.read_text())
+
+    # Canonical form (critical for stable hashing)
+    contract_canonical = json.dumps(
+        contract_raw,
+        sort_keys=True,
+        separators=(",", ":")
+    ).encode()
+
     # ------------------------------------------------------------------
     # Collect source + include files for hashing
     # ------------------------------------------------------------------
@@ -54,12 +71,25 @@ else:
     log(f"Found {len(all_files)} source+include files for hashing")
 
     # ------------------------------------------------------------------
+    # Compute contract hash
+    # ------------------------------------------------------------------
+    contract_hasher = hashlib.sha1()
+    contract_hasher.update(contract_canonical)
+    contract_hash = contract_hasher.hexdigest()
+    log(f"CONTRACT_HASH = {contract_hash}")
+
+    # ------------------------------------------------------------------
     # Compute build hash
     # ------------------------------------------------------------------
     build_hasher = hashlib.sha1()
+
+    # contract MUST affect firmware identity
+    build_hasher.update(contract_canonical)
+
     for f in all_files:
         build_hasher.update(str(f.relative_to(PROJECT_DIR)).encode())
         build_hasher.update(f.read_bytes())
+
     build_hash = build_hasher.hexdigest()
     log(f"BUILD_HASH = {build_hash}")
 
@@ -87,38 +117,50 @@ else:
     # ------------------------------------------------------------------
     hash_dir = BUILD_LOG_DIR / build_hash
     hash_dir.mkdir(parents=True, exist_ok=True)
+    log(f"Using snapshot: {hash_dir}")
 
-    # ------------------------------------------------------------------
-    # Snapshot src/
-    # ------------------------------------------------------------------
-    SRC_SNAPSHOT_DIR = hash_dir / "src_snapshot"
-    if not SRC_SNAPSHOT_DIR.exists():
-        log("Creating src snapshot")
-        shutil.copytree(SRC_DIR, SRC_SNAPSHOT_DIR)
-    else:
-        log("src snapshot already exists — skipping")
+    # ----------------------------------------------------------------------
+    # Archive materialization (append-only, no shutil, no overwrite)
+    # ----------------------------------------------------------------------
 
-    # ------------------------------------------------------------------
-    # Snapshot include/ excluding generated/
-    # ------------------------------------------------------------------
-    INCLUDE_SNAPSHOT_DIR = hash_dir / "include_snapshot"
+    # ---- Contract snapshot ----
+    contract_dir = hash_dir / "contract_snapshot"
+    contract_dir.mkdir(parents=True, exist_ok=True)
 
-    if INCLUDE_DIR.exists() and not INCLUDE_SNAPSHOT_DIR.exists():
-        log("Creating include snapshot (excluding generated/)")
+    contract_out = contract_dir / "control_contract.json"
+    if not contract_out.exists():
+        contract_out.write_bytes(CONTRACT_PATH.read_bytes())
+        log("Wrote contract snapshot")
 
-        def include_filter(path, names):
-            ignored = []
-            if Path(path) == INCLUDE_DIR and "generated" in names:
-                ignored.append("generated")
-            return ignored
+    # ---- Source snapshot ----
+    src_out_dir = hash_dir / "src_snapshot"
+    src_out_dir.mkdir(parents=True, exist_ok=True)
 
-        shutil.copytree(
-            INCLUDE_DIR,
-            INCLUDE_SNAPSHOT_DIR,
-            ignore=include_filter
-        )
-    else:
-        log("include snapshot already exists or include/ missing — skipping")
+    for f in SRC_DIR.rglob("*"):
+        if f.is_file():
+            rel = f.relative_to(SRC_DIR)
+            out = src_out_dir / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+
+            if not out.exists():
+                out.write_bytes(f.read_bytes())
+
+    log("Source snapshot materialized")
+
+    # ---- Include snapshot ----
+    inc_out_dir = hash_dir / "include_snapshot"
+    inc_out_dir.mkdir(parents=True, exist_ok=True)
+
+    for f in INCLUDE_DIR.rglob("*"):
+        if f.is_file() and GENERATED_DIR not in f.parents:
+            rel = f.relative_to(INCLUDE_DIR)
+            out = inc_out_dir / rel
+            out.parent.mkdir(parents=True, exist_ok=True)
+
+            if not out.exists():
+                out.write_bytes(f.read_bytes())
+
+    log("Include snapshot materialized")
 
     # ------------------------------------------------------------------
     # Record library commit SHAs
@@ -172,6 +214,24 @@ else:
     log("Include path injected")
 
     # ----------------------------------------------------------------------
+    # Write contract.h
+    # ----------------------------------------------------------------------
+    contract_header = GENERATED_HEADER_DIR / "contract.h"
+    contract_header.write_text(
+        "// Auto-generated by PlatformIO extra_pre.py\n"
+        "#pragma once\n\n"
+        f'#define CONTRACT_HASH "{contract_hash}"\n'
+        f'#define CONTROL_PERIOD_MS {contract_raw["control_loop"]["period_ms"]}\n'
+        f'#define CONTROL_FREQUENCY_HZ {contract_raw["control_loop"]["frequency_hz"]}\n'
+        f'#define ODOM_PERIOD_MS {contract_raw["odometry_loop"]["period_ms"]}\n'
+        f'#define ODOM_FREQUENCY_HZ {contract_raw["odometry_loop"]["frequency_hz"]}\n'
+        f'#define CMD_MIN {contract_raw["motor"]["cmd_min"]}\n'
+        f'#define CMD_MAX {contract_raw["motor"]["cmd_max"]}\n'
+        f'#define MAX_ACCEL_TPS_PER_SECOND {contract_raw["motor"]["max_accel_tps_per_second"]}\n'
+    )
+    log(f"Wrote contract header: {contract_header}")
+
+    # ----------------------------------------------------------------------
     # Write pre-build metadata JSON
     # ----------------------------------------------------------------------
     metadata = {
@@ -179,9 +239,13 @@ else:
         "build_hash": build_hash,
         "build_timestamp_utc": build_timestamp_utc,
         "libs_hash": libs_hash,
-        "library_files": [str(f) for f in lib_files]
+        "contract_hash": contract_hash,
+        "library_files": [str(f) for f in lib_files],
+        "contract_file": str(CONTRACT_PATH)
     }
-    (hash_dir / "info_pre.json").write_text(json.dumps(metadata, indent=2))
+    metadata_file = hash_dir / "info_pre.json"
+    if not metadata_file.exists():
+        metadata_file.write_text(json.dumps(metadata, indent=2))
     log(f"Wrote pre-build metadata JSON for hash {build_hash}")
 
     # ----------------------------------------------------------------------
