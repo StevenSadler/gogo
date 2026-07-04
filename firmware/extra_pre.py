@@ -222,10 +222,7 @@ else:
     "#pragma once\n\n"
     f'static constexpr const char* CONTRACT_HASH = "{contract_hash}";\n'
     f'static constexpr unsigned long CONTROL_PERIOD_MS = {contract_raw["control_loop"]["period_ms"]};\n'
-    f'static constexpr unsigned long CONTROL_FREQUENCY_HZ = {contract_raw["control_loop"]["frequency_hz"]};\n'
     f'static constexpr unsigned long ODOM_PERIOD_MS = {contract_raw["odometry_loop"]["period_ms"]};\n'
-    f'static constexpr unsigned long ODOM_FREQUENCY_HZ = {contract_raw["odometry_loop"]["frequency_hz"]};\n'
-    f'static constexpr int CMD_MIN = {contract_raw["motor"]["cmd_min"]};\n'
     f'static constexpr int CMD_MAX = {contract_raw["motor"]["cmd_max"]};\n'
     f'static constexpr int MAX_ACCEL_TPS_PER_SECOND = {contract_raw["motor"]["max_accel_tps_per_second"]};\n'
 )

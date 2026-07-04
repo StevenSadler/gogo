@@ -91,8 +91,8 @@ public:
 
         // Final clamp to ensure we do not exceed max safe speed
         // This is a safeguard for floating point rounding errors
-        leftCurrent = constrain(leftCurrent, CMD_MIN, CMD_MAX);
-        rightCurrent = constrain(rightCurrent, CMD_MIN, CMD_MAX);
+        leftCurrent = constrain(leftCurrent, -CMD_MAX, CMD_MAX);
+        rightCurrent = constrain(rightCurrent, -CMD_MAX, CMD_MAX);
 
         // Send ramped speeds to Roboclaw
         roboclaw.SpeedM1(ROBOCLAW_ADDRESS, leftCurrent);
