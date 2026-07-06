@@ -8,6 +8,9 @@
   "safety": {
     "watchdog_timeout_ms": 300
   },
+  "serial": {
+    "baudrate": 38400
+  },
   "motor": {
     "cmd_max": 2000,
     "max_accel_tps_per_second": 7500,

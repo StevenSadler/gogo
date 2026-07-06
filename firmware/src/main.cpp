@@ -119,10 +119,6 @@ void setup() {
     delay(100);
     telemetry.sendLog(SubID::INFO_GENERAL, 
         MessageBuilder::build(FrameID::LOG, "Firmware alive"));
-    
-    // adding this to test proof of concept
-    telemetry.sendLog(SubID::INFO_GENERAL,
-        MessageBuilder::build(FrameID::LOG, "Contract Hash: %s", CONTRACT_HASH));
 
     motors.begin();
     telemetry.sendLog(SubID::INFO_GENERAL, 

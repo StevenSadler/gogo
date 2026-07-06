@@ -9,6 +9,7 @@ from gogo_interfaces.msg import MotorCommand, ModeSelect, EncoderFeedback
 from gogo_control.hardware.watchdog import Watchdog
 from gogo_control.hardware.serial_manager import SerialManager
 from gogo_control.kinematics.diff_drive import DiffDriveKinematics
+from gogo_description.contract_loader import load_contract
 from gogo_description.qos_profiles import (
     CMD_VEL_QOS, 
     MODE_SELECT_QOS, 
@@ -20,7 +21,7 @@ from gogo_description.robot_constants import (
     ENCODER_CPR,
     MIN_TPS,
     MAX_TPS,
-    BAUDRATE,
+    # BAUDRATE,
     DEFAULT_PORT
 )
 
@@ -30,6 +31,8 @@ class TwistSerial(Node):
 
         self.current_mode = "MODE_IDLE"
 
+        self.contract = load_contract()
+
         # ROS subscriptions and publishers
         self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, CMD_VEL_QOS)
         self.mode_sub = self.create_subscription(ModeSelect, "mode_select", self.mode_callback, MODE_SELECT_QOS)
@@ -37,35 +40,35 @@ class TwistSerial(Node):
         self.enc_pub = self.create_publisher(EncoderFeedback, "encoders", SENSOR_QOS)
 
         # Parameters
-        self.declare_parameter("min_tps", MIN_TPS)
-        self.declare_parameter("max_tps", MAX_TPS)
+        # self.declare_parameter("min_tps", MIN_TPS)
+        # self.declare_parameter("max_tps", MAX_TPS)
         self.declare_parameter("wheel_radius", WHEEL_RADIUS)
         self.declare_parameter("wheel_separation", WHEEL_SEPARATION)
         self.declare_parameter("encoder_cpr", ENCODER_CPR)
         self.declare_parameter("arduino_port", DEFAULT_PORT)
-        self.declare_parameter("baudrate", BAUDRATE)
+        # self.declare_parameter("baudrate", BAUDRATE)
         self.declare_parameter("enable_serial", True)
 
-        self.min_tps = self.get_parameter("min_tps").get_parameter_value().integer_value
-        self.max_tps = self.get_parameter("max_tps").get_parameter_value().integer_value
+        # self.min_tps = self.get_parameter("min_tps").get_parameter_value().integer_value
+        # self.max_tps = self.get_parameter("max_tps").get_parameter_value().integer_value
         self.wheel_radius = self.get_parameter("wheel_radius").get_parameter_value().double_value
         self.wheel_separation = self.get_parameter("wheel_separation").get_parameter_value().double_value
         self.encoder_cpr = self.get_parameter("encoder_cpr").get_parameter_value().double_value
         self.arduino_port = self.get_parameter("arduino_port").get_parameter_value().string_value
-        self.baudrate = self.get_parameter("baudrate").get_parameter_value().integer_value
+        # self.baudrate = self.get_parameter("baudrate").get_parameter_value().integer_value
         self.enable_serial = self.get_parameter("enable_serial").get_parameter_value().bool_value
 
         self.kinematics = DiffDriveKinematics(
             wheel_separation=self.wheel_separation,
             wheel_radius=self.wheel_radius,
             encoder_cpr=self.encoder_cpr,
-            max_tps=self.max_tps,
+            max_tps=self.contract.motor.cmd_max
         )
 
         self.ticks_per_meter = self.encoder_cpr / (2 * pi * self.wheel_radius)
 
         self.get_logger().warn(
-            f"PARAMS: min_tps={self.min_tps}, max_tps={self.max_tps}, ticks_per_meter={self.ticks_per_meter:.1f}"
+            f"PARAMS: max_tps={self.contract.motor.cmd_max}, ticks_per_meter={self.ticks_per_meter:.1f}"
         )
 
         # Expected upstream publish period
@@ -80,7 +83,7 @@ class TwistSerial(Node):
         # Serial manager
         self.serial_manager = SerialManager(
             port=self.arduino_port,
-            baudrate=self.baudrate,
+            baudrate=self.contract.serial.baudrate,
             logger=self.get_logger(),
             encoder_callback=self.encoder_callback,
             enable_serial=self.enable_serial

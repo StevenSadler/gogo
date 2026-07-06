@@ -206,6 +206,8 @@ else:
         f'#define BUILD_HASH "{build_hash}"\n'
         f'#define BUILD_TIMESTAMP_UTC "{build_timestamp_utc}"\n'
         f'#define LIBS_HASH "{libs_hash}"\n'
+        f'#define CONTRACT_HASH "{contract_hash}"\n'
+
     )
     log(f"Wrote header: {header_path}")
 
@@ -225,6 +227,7 @@ else:
     f'static constexpr unsigned long ODOM_PERIOD_MS = {contract_raw["odometry_loop"]["period_ms"]};\n'
     f'static constexpr int CMD_MAX = {contract_raw["motor"]["cmd_max"]};\n'
     f'static constexpr int MAX_ACCEL_TPS_PER_SECOND = {contract_raw["motor"]["max_accel_tps_per_second"]};\n'
+    f'static constexpr int BAUDRATE = {contract_raw["serial"]["baudrate"]};\n'
 )
     log(f"Wrote contract header: {contract_header}")
 

@@ -8,12 +8,14 @@ struct BuildInfo {
     const char* buildHash;
     const char* buildTimestampUTC;
     const char* libsHash;
+    const char* contractHash;
     StructuredTelemetry& telemetry;
 
     BuildInfo(StructuredTelemetry& telemetry)
         : buildHash(BUILD_HASH)
         , buildTimestampUTC(BUILD_TIMESTAMP_UTC)
         , libsHash(LIBS_HASH)
+        , contractHash(CONTRACT_HASH)
         , telemetry(telemetry) {}
 
     void report() const {
@@ -25,6 +27,8 @@ struct BuildInfo {
             MessageBuilder::build(FrameID::LOG, "B time: %s", buildTimestampUTC));
         telemetry.sendLog(SubID::INFO_GENERAL, 
             MessageBuilder::build(FrameID::LOG, "L hash: %s", libsHash));
+        telemetry.sendLog(SubID::INFO_GENERAL, 
+            MessageBuilder::build(FrameID::LOG, "C hash: %s", contractHash));
         telemetry.sendLog(SubID::INFO_GENERAL, 
             MessageBuilder::build(FrameID::LOG, "================================"));
     }
