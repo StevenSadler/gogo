@@ -19,9 +19,6 @@ from gogo_description.robot_constants import (
     WHEEL_RADIUS,
     WHEEL_SEPARATION,
     ENCODER_CPR,
-    MIN_TPS,
-    MAX_TPS,
-    # BAUDRATE,
     DEFAULT_PORT
 )
 
@@ -40,22 +37,16 @@ class TwistSerial(Node):
         self.enc_pub = self.create_publisher(EncoderFeedback, "encoders", SENSOR_QOS)
 
         # Parameters
-        # self.declare_parameter("min_tps", MIN_TPS)
-        # self.declare_parameter("max_tps", MAX_TPS)
         self.declare_parameter("wheel_radius", WHEEL_RADIUS)
         self.declare_parameter("wheel_separation", WHEEL_SEPARATION)
         self.declare_parameter("encoder_cpr", ENCODER_CPR)
         self.declare_parameter("arduino_port", DEFAULT_PORT)
-        # self.declare_parameter("baudrate", BAUDRATE)
         self.declare_parameter("enable_serial", True)
 
-        # self.min_tps = self.get_parameter("min_tps").get_parameter_value().integer_value
-        # self.max_tps = self.get_parameter("max_tps").get_parameter_value().integer_value
         self.wheel_radius = self.get_parameter("wheel_radius").get_parameter_value().double_value
         self.wheel_separation = self.get_parameter("wheel_separation").get_parameter_value().double_value
         self.encoder_cpr = self.get_parameter("encoder_cpr").get_parameter_value().double_value
         self.arduino_port = self.get_parameter("arduino_port").get_parameter_value().string_value
-        # self.baudrate = self.get_parameter("baudrate").get_parameter_value().integer_value
         self.enable_serial = self.get_parameter("enable_serial").get_parameter_value().bool_value
 
         self.kinematics = DiffDriveKinematics(
