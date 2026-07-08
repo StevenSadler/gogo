@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "generated/contract.h"
+#include "BuildIdentity.h"
 #include "BuildInfo.h"
 #include "MotorController.h"
 #include "SerialManager.h"
@@ -20,6 +21,7 @@ StructuredTelemetry telemetry(Serial);
 MotorController motors(telemetry);
 TestHarness testHarness(motors, telemetry);
 BuildInfo buildInfo(telemetry);
+BuildIdentity buildIdentity(telemetry);
 
 bool watchdogExpiryNoted = false; // did watchdog just expire
 unsigned long lastControlMs = 0;
@@ -125,6 +127,8 @@ void setup() {
         MessageBuilder::build(FrameID::LOG, "Probing Roboclaw..."));
 
     motors.probe();
+
+    buildIdentity.send();
 
     // choose initial mode
     enterIdle();

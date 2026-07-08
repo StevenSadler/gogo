@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
-#include "generated/build_hash.h"
+#include "generated/build_metadata.h"
 #include "StructuredTelemetry.h"
 #include "MessageBuilder.h"
 

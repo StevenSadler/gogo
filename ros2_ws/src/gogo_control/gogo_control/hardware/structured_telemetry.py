@@ -11,6 +11,7 @@ class FrameID(IntEnum):
     MODE_ACK = 0x04
     STATUS_EVENT = 0x05
     LOG = 0x06
+    IDENTITY = 0x07
 
 
 # ==============================
@@ -100,5 +101,10 @@ def decode_structured_payload(payload: bytes):
         if len(data) >= 1:
             result["severity"] = data[0]
             result["message"] = data[1:].decode("ascii", errors="ignore")
+    
+    elif frame_enum == FrameID.IDENTITY:
+        if len(data) >= 8:
+            result["build_hash"] = int.from_bytes(data[0:4], "little", signed=False)
+            result["contract_hash"] = int.from_bytes(data[4:8], "little", signed=False)
 
     return result

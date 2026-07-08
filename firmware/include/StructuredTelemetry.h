@@ -16,7 +16,8 @@ enum class FrameID : uint8_t {
     ERROR          = 0x03,
     MODE_ACK       = 0x04,
     STATUS_EVENT   = 0x05,
-    LOG            = 0x06
+    LOG            = 0x06,
+    IDENTITY       = 0x07
 };
 
 // ==============================
@@ -115,6 +116,16 @@ public:
         begin(FrameID::LOG);
         printer.write(static_cast<uint8_t>(severity));
         writeString(msg);
+        commit();
+    }
+
+    // ------------------------------
+    // IDENTITY
+    // ------------------------------
+    void sendIdentity(uint32_t build_hash, uint32_t contract_hash) {
+        begin(FrameID::IDENTITY);
+        writeUInt32(build_hash);
+        writeUInt32(contract_hash);
         commit();
     }
 

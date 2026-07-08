@@ -9,10 +9,11 @@ class SerialManager:
     Encapsulates connection, parsing, and telemetry.
     """
 
-    def __init__(self, port, baudrate, logger, encoder_callback=None,
+    def __init__(self, port, baudrate, logger, encoder_callback=None, identity_callback=None,
                 reconnect_period_sec=1.0, enable_serial=True):
         self.enable_serial = enable_serial
         self.encoder_callback = encoder_callback
+        self.identity_callback = identity_callback
         self.logger = logger
 
         if not self.enable_serial:
@@ -23,7 +24,11 @@ class SerialManager:
             return
 
         # Normal setup (connection, parser, telemetry)
-        self.parser = SerialMessageParser(logger, self._internal_encoder_callback)
+        self.parser = SerialMessageParser(
+            logger=logger, 
+            encoder_callback=self._internal_encoder_callback, 
+            identity_callback=self._internal_identity_callback
+        )
         self.conn = TwistSerialConnectionHandler(
             port=port,
             baudrate=baudrate,
@@ -49,11 +54,12 @@ class SerialManager:
         """
         self.send_command(f"{left},{right}")
 
-    def register_encoder_callback(self, callback):
-        """
-        Allow external code (e.g., TwistSerial node) to receive encoder updates.
-        """
-        self.encoder_callback = callback
+    # TODO consider removing this if it is dead code
+    # def register_encoder_callback(self, callback):
+    #     """
+    #     Allow external code (e.g., TwistSerial node) to receive encoder updates.
+    #     """
+    #     self.encoder_callback = callback
 
     def read_available_bytes(self):
         """
@@ -86,6 +92,14 @@ class SerialManager:
         """
         if self.encoder_callback:
             self.encoder_callback(left, right, timestamp)
+    
+    def _internal_identity_callback(self, build_hash, contract_hash):
+        """
+        Called by SerialMessageParser when identity frame arrives.
+        Passes to external callback if registered.
+        """
+        if self.identity_callback:
+            self.identity_callback(build_hash, contract_hash)
 
     def close(self):
         if self.conn:

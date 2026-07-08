@@ -10,6 +10,7 @@ from gogo_control.hardware.watchdog import Watchdog
 from gogo_control.hardware.serial_manager import SerialManager
 from gogo_control.kinematics.diff_drive import DiffDriveKinematics
 from gogo_description.contract_loader import load_contract
+from gogo_description.identity_loader import load_identity
 from gogo_description.qos_profiles import (
     CMD_VEL_QOS, 
     MODE_SELECT_QOS, 
@@ -29,6 +30,7 @@ class TwistSerial(Node):
         self.current_mode = "MODE_IDLE"
 
         self.contract = load_contract()
+        self.identity = load_identity()
 
         # ROS subscriptions and publishers
         self.sub = self.create_subscription(Twist, "cmd_vel", self.twist_callback, CMD_VEL_QOS)
@@ -77,6 +79,7 @@ class TwistSerial(Node):
             baudrate=self.contract.serial.baudrate,
             logger=self.get_logger(),
             encoder_callback=self.encoder_callback,
+            identity_callback=self.identity_callback,
             enable_serial=self.enable_serial
         )
         # Timers for reading and reconnecting
@@ -140,6 +143,27 @@ class TwistSerial(Node):
         msg.timestamp_ms = timestamp
 
         self.enc_pub.publish(msg)
+    
+    def identity_callback(self, build_hash: int, contract_hash: int):
+        received_build = f"{build_hash:08x}"
+        received_contract = f"{contract_hash:08x}"
+
+        if (
+            received_build == self.identity.build_hash
+            and received_contract == self.identity.contract_hash
+        ):
+            self.get_logger().info(
+                "[IDENTITY] Firmware matches ROS workspace."
+            )
+        else:
+            self.get_logger().warn(
+                "[IDENTITY] Firmware identity differs from ROS expected identity.\n"
+                f"Expected: build={self.identity.build_hash} "
+                f"contract={self.identity.contract_hash}\n"
+                f"Received: build={received_build} "
+                f"contract={received_contract}"
+            )
+
 
     # --------------------------
     # WATCHDOG & CLEANUP

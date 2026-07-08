@@ -7,9 +7,10 @@ class SerialMessageParser:
     logs them via the provided logger.
     """
 
-    def __init__(self, logger, encoder_callback):
+    def __init__(self, logger, encoder_callback, identity_callback=None):
         self.logger = logger
         self.encoder_callback = encoder_callback
+        self.identity_callback = identity_callback
         # cache structured frame IDs for efficiency
         self.structured_ids = {fid.value for fid in FrameID}
 
@@ -107,6 +108,19 @@ class SerialMessageParser:
             else:
                 self.logger.error(f"parser error LOG severity {severity}")
                 # self.logger.info(f"[FW] {msg}")  # safe fallback
+        
+        elif frame_enum == FrameID.IDENTITY:
+            build_hash = data.get("build_hash")
+            contract_hash = data.get("contract_hash")
+
+            self.logger.info(
+                f"[FW IDENTITY] build={build_hash:08x} "
+                f"contract={contract_hash:08x}"
+            )
+
+            if self.identity_callback:
+                self.identity_callback(build_hash, contract_hash)
+
 
 
     # --------------------------
