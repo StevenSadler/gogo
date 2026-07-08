@@ -1,0 +1,74 @@
+GOGO CONTROL CONTRACT (DESIGN NOTES)
+
+WHY TWO FILES EXIST:
+
+We separate machine truth from human reasoning to prevent:
+- accidental parsing ambiguity
+- config drift caused by comments being ignored or stripped
+- mixing “why” with “what” in a format that should be deterministic
+
+The JSON file is the ONLY source of runtime truth.
+This .txt file exists purely to explain decisions and tradeoffs.
+
+------------------------------------------------------------
+
+CONTROL LOOP (20ms / 50Hz):
+Chosen as a balance between:
+- responsive teleoperation
+- stable motor ramping
+- Arduino compute constraints
+
+Higher frequency increases CPU load without meaningful improvement.
+Lower frequency makes motion feel sluggish and less stable.
+
+------------------------------------------------------------
+
+MAX ACCEL (150 TPS/cycle):
+This limits how quickly motor commands change.
+
+Reason:
+- prevents current spikes during sudden motion changes
+- reduces brownout risk under battery + motor load
+- improves smoothness on carpet transitions
+
+Effective acceleration:
+150 TPS per 20ms -> ~7500 TPS/sec
+
+------------------------------------------------------------
+
+CMD LIMITS (+/-2000 TPS):
+This is a system-level safety envelope.
+
+Reasoning:
+- ~1000 TPS was too slow (motor buzzing / poor torque usage)
+- ~2000 TPS is stable for indoor use
+- higher values increase risk of excessive current draw
+- theoretical motor capability (~5000 TPS) is NOT system-safe
+
+------------------------------------------------------------
+
+ODOMETRY LOOP (50ms / 20Hz):
+Decoupled from control loop to reduce CPU load and stabilize telemetry rate.
+
+------------------------------------------------------------
+
+COMMAND MODEL:
+
+System is strictly stateless per control cycle.
+
+Each new command fully replaces previous command state.
+There is no queueing, buffering, or blending at the ROS layer.
+
+Motor smoothing is handled ONLY by firmware acceleration limits.
+
+------------------------------------------------------------
+
+KEY ARCHITECTURAL PRINCIPLE:
+
+ROS is a command emitter only.
+
+Firmware is the only system that:
+- enforces timing
+- enforces acceleration limits
+- enforces safety constraints
+- determines actual motor output behavior

@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include "generated/contract.h"
+#include "BuildIdentity.h"
 #include "BuildInfo.h"
 #include "MotorController.h"
 #include "SerialManager.h"
@@ -12,15 +14,14 @@ ControlMode mode;
 // ----------------------
 // CONFIG
 // ----------------------
-constexpr unsigned long CONTROL_PERIOD_MS = 20;      // 50 Hz
-constexpr unsigned long ODOM_PERIOD_MS = 50;         // 20 Hz
 constexpr unsigned long WATCHDOG_TIMEOUT_MS = 300;   // 0.3 s
 
 SerialManager serialMgr;
 StructuredTelemetry telemetry(Serial);
-MotorController motors(-2000, 2000, telemetry); // min, max
+MotorController motors(telemetry);
 TestHarness testHarness(motors, telemetry);
 BuildInfo buildInfo(telemetry);
+BuildIdentity buildIdentity(telemetry);
 
 bool watchdogExpiryNoted = false; // did watchdog just expire
 unsigned long lastControlMs = 0;
@@ -126,6 +127,8 @@ void setup() {
         MessageBuilder::build(FrameID::LOG, "Probing Roboclaw..."));
 
     motors.probe();
+
+    buildIdentity.send();
 
     // choose initial mode
     enterIdle();
