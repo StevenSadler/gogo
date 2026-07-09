@@ -1,0 +1,7 @@
+goal_follow:
+  ros__parameters:
+    max_linear_speed: 0.10
+    max_angular_speed: 0.50
+
+    position_tolerance: 0.05
+    angle_tolerance: 0.10

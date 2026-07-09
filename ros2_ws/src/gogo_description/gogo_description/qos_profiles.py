@@ -19,3 +19,9 @@ SENSOR_QOS = QoSProfile(
     depth=10,
     reliability=QoSReliabilityPolicy.BEST_EFFORT
 )
+
+GOAL_QOS = QoSProfile(
+    history=QoSHistoryPolicy.KEEP_LAST,
+    depth=10,
+    reliability=QoSReliabilityPolicy.RELIABLE
+)
