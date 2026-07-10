@@ -25,7 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'serial_driver = gogo_control.serial_driver:main',
-            'twist_serial = gogo_control.twist_serial:main'
+            'twist_serial = gogo_control.twist_serial:main',
+            'cmd_vel_mux = gogo_control.cmd_vel_mux:main'
         ],
     },
 )

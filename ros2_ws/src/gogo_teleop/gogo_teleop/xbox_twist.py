@@ -1,32 +1,23 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from sensor_msgs.msg import Joy
 from geometry_msgs.msg import Twist
+from std_msgs.msg import Bool
 from gogo_interfaces.msg import ModeSelect
+from gogo_description.qos_profiles import (
+    CMD_VEL_QOS, 
+    MODE_SELECT_QOS
+)
 
 class XboxTwist(Node):
     def __init__(self):
         super().__init__('xbox_twist')
 
-        # QoS for high-rate topics (cmd_vel)
-        cmd_vel_qos = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=1,
-            reliability=QoSReliabilityPolicy.BEST_EFFORT
-        )
-
-        # QoS for mode selection
-        mode_select_qos = QoSProfile(
-            history=QoSHistoryPolicy.KEEP_LAST,
-            depth=10,
-            reliability=QoSReliabilityPolicy.RELIABLE
-        )
-
-        self.pub = self.create_publisher(Twist, 'cmd_vel', cmd_vel_qos)
-        self.mode_pub = self.create_publisher(ModeSelect, 'mode_select', mode_select_qos)
-        self.sub = self.create_subscription(Joy, 'joy', self.joy_callback, cmd_vel_qos)
+        self.joy_pub = self.create_publisher(Twist, 'cmd_vel_joy', CMD_VEL_QOS)
+        self.mode_pub = self.create_publisher(ModeSelect, 'mode_select', MODE_SELECT_QOS)
+        self.enable_pub = self.create_publisher(Bool, "operator_enable", MODE_SELECT_QOS)
+        self.sub = self.create_subscription(Joy, 'joy', self.joy_callback, CMD_VEL_QOS)
 
 
         # Parameters for mapping
@@ -86,25 +77,21 @@ class XboxTwist(Node):
         return first_pressed
 
     def joy_callback(self, msg: Joy):
-        enable = msg.buttons[self.enable_button]
+        enable = bool(msg.buttons[self.enable_button])
 
-        # Rising or steady edge: actively controlling
-        if enable:
-            # Twist mapping
-            twist = Twist()
-            if msg.buttons[self.enable_button]:
-                twist.linear.x = msg.axes[self.axis_linear] * self.scale_linear
-                twist.angular.z = msg.axes[self.axis_angular] * self.scale_angular
-            else:
-                twist.linear.x = 0.0
-                twist.angular.z = 0.0
-            self.pub.publish(twist)
-        
-        # Falling edge: deadman just released -> immediate stop
-        elif self.prev_enable and not enable:
-            self.pub.publish(Twist())  # single stop command
-        
-        # else: silence
+        # Publish operator enable state on change
+        if enable != self.prev_enable:
+            enable_msg = Bool()
+            enable_msg.data = enable
+            self.enable_pub.publish(enable_msg)
+
+            self.get_logger().info(f"Operator enable: {enable}")
+
+        # Always publish joystick command
+        twist = Twist()
+        twist.linear.x = msg.axes[self.axis_linear] * self.scale_linear
+        twist.angular.z = msg.axes[self.axis_angular] * self.scale_angular
+        self.joy_pub.publish(twist)
 
         self.prev_enable = enable
 
@@ -115,6 +102,7 @@ class XboxTwist(Node):
             mode_msg.mode = mode_selection
             self.mode_pub.publish(mode_msg)
             self.last_mode = mode_selection
+            
             self.get_logger().warn(f"Mode selection: {mode_selection}")
         
 
