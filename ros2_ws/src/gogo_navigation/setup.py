@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'gogo_control'
+package_name = 'gogo_navigation'
 
 setup(
     name=package_name,
@@ -24,9 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'serial_driver = gogo_control.serial_driver:main',
-            'twist_serial = gogo_control.twist_serial:main',
-            'cmd_vel_mux = gogo_control.cmd_vel_mux:main'
+            'goal_follow = gogo_navigation.goal_follow:main'
         ],
     },
 )

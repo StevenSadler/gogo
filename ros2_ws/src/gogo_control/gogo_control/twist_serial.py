@@ -3,7 +3,6 @@
 from math import pi
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
 from geometry_msgs.msg import Twist
 from gogo_interfaces.msg import MotorCommand, ModeSelect, EncoderFeedback
 from gogo_control.hardware.watchdog import Watchdog
