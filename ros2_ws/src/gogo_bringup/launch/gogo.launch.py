@@ -36,6 +36,13 @@ def generate_launch_description():
         output='screen',
     )
 
+    cmd_vel_mux_node = Node(
+        package='gogo_control',
+        executable='cmd_vel_mux',
+        name='cmd_vel_mux',
+        output='screen',
+    )
+
     twist_serial_node = Node(
         package='gogo_control',
         executable='twist_serial',
@@ -53,6 +60,7 @@ def generate_launch_description():
     return LaunchDescription([
         lidar_tf_node,
         odometry_node,
+        cmd_vel_mux_node,
         twist_serial_node,
         lidar_node,
     ])
